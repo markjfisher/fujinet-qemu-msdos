@@ -24,20 +24,36 @@ cd /path/to/fujinet-msdos
 make -C sys FUJINET_TRANSPORT=NIO
 ```
 
-Optionally build the MS-DOS NIO test applications in `nio-apps`:
+Optionally build MS-DOS test applications and other NIO clients. App injection is
+controlled by a YAML manifest; see `manifests/apps.example.yaml`.
 
 ```sh
 cd /path/to/nio-apps
 make -C msdos clean all
 ```
 
-Create the NIO boot image by cloning `msdos.qcow2` and replacing
-`C:\FUJINET.SYS` with the newly built NIO driver. If the `nio-apps` tools were
-built, this also copies `NIOPROBE.EXE` and `NIOREAD.EXE` into `C:\`:
+Create the NIO boot image by cloning `msdos.qcow2` and injecting the NIO driver.
+Generated images are written under `build/` and are not committed to git.
+
+Driver only (`build/msdos-nio.qcow2`):
 
 ```sh
+export FUJINET_MSDOS=/path/to/fujinet-msdos
 ./build-nio-qcow
 ```
+
+Driver plus apps (`build/msdos-nio-apps.qcow2`):
+
+```sh
+cp manifests/apps.example.yaml manifests/apps.yaml
+export FUJINET_MSDOS=/path/to/fujinet-msdos
+export NIO_APPS=/path/to/nio-apps/msdos
+export BOUNCE_WORLD_CLIENT_NIO=/path/to/bounce-world-client-nio
+./build-nio-qcow --apps-manifest manifests/apps.yaml
+```
+
+Each manifest entry maps a host file to an 8.3 FAT name on `C:\`. Optional
+entries (`required: false`) are skipped when the source file is missing.
 
 Run QEMU with `fujinet-nio`:
 
@@ -45,9 +61,19 @@ Run QEMU with `fujinet-nio`:
 ./run-qemu-nio
 ```
 
+For an apps image:
+
+```sh
+./run-qemu-nio --hda build/msdos-nio-apps.qcow2
+```
+
 `run-qemu-nio` starts `fujinet-nio` from
 `../fujinet-nio/build/fujibus-tcp-debug/fujinet-nio`, waits for the TCP serial
-listener, and then launches QEMU with `msdos-nio.qcow2`.
+listener, and then launches QEMU with `build/msdos-nio.qcow2` by default.
+
+The committed base image is `msdos.qcow2`. Generated NIO images live under
+`build/` and should not be committed. If `msdos-nio.qcow2` in the repo root
+was tracked previously, remove it with `git rm --cached msdos-nio.qcow2`.
 
 At the MS-DOS prompt, run:
 
@@ -81,7 +107,7 @@ Key `run-qemu-nio` options:
 | Flag | Env var | Default | Description |
 |---|---|---|---|
 | `-m`, `--memory` | `MEMORY` | `64` | RAM in MB for the QEMU machine |
-| `-d`, `--hda` | `HDA` | `msdos-nio.qcow2` | NIO hard disk image path |
+| `-d`, `--hda` | `HDA` | `build/msdos-nio.qcow2` | NIO hard disk image path |
 | `-f`, `--fda` | `FDA` | _(none)_ | Floppy disk image path |
 | `-b`, `--boot` | `BOOT` | `c` | Boot device (`c` = hard disk, `a` = floppy) |
 | `-p`, `--port` | `FUJINET_PORT` | `65504` | FujiNet NIO TCP serial port |

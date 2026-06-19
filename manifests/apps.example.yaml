@@ -1,0 +1,18 @@
+# Copy to manifests/apps.yaml and adjust paths for your workspace layout.
+#
+# Paths support shell-style environment expansion (${VAR}) and ~.
+# Relative paths are resolved from the fujinet-qemu-msdos repository root.
+#
+# Each entry copies a host file onto C:\ using the given FAT 8.3 name.
+# Optional apps (required: false) are skipped when the source file is missing.
+
+apps:
+  - src: ${NIO_APPS}/bin/nioprobe.exe
+    name: NIOPROBE.EXE
+    required: false
+  - src: ${NIO_APPS}/bin/nioread.exe
+    name: NIOREAD.EXE
+    required: false
+  - src: ${BOUNCE_WORLD}/build/bwcn.msdos.exe
+    name: BWCN.EXE
+    required: false

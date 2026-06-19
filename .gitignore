@@ -2,7 +2,26 @@ fujinet
 fujinet/*
 fujinet-data/
 disks/*
+build/
+manifests/apps.yaml
+msdos-nio.qcow2
 **/*.bak
 **/*.img
 **/*.dsk
 **/*.raw
+
+# python
+*.pyc
+__pycache__/
+*.py[cod]
+
+# various
+*.egg-info/
+*.egg
+*.log
+*.bak
+*.tmp
+*.swp
+*.swo
+*.orig
+*.rej

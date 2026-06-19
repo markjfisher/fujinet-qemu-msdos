@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 
 MEMORY=${MEMORY:-64}
-HDA=${HDA:-"$SCRIPT_DIR/msdos-nio.qcow2"}
+HDA=${HDA:-"$SCRIPT_DIR/build/msdos-nio.qcow2"}
 FUJINET_PORT=${FUJINET_PORT:-65504}
 FUJINET_HOST=${FUJINET_HOST:-127.0.0.1}
 FUJINET_NIO_PATH=${FUJINET_NIO_PATH:-"$SCRIPT_DIR/../fujinet-nio"}
@@ -23,7 +23,7 @@ Start fujinet-nio and launch QEMU for the NIO MS-DOS driver image.
 
 Options:
   -m, --memory <MB>       RAM for the QEMU machine (env: MEMORY, default: 64)
-  -d, --hda <image>       Hard disk image (env: HDA, default: msdos-nio.qcow2)
+  -d, --hda <image>       Hard disk image (env: HDA, default: build/msdos-nio.qcow2)
   -f, --fda <image>       Floppy disk image (env: FDA, default: none)
   -b, --boot <device>     Boot device: c=hard disk, a=floppy (env: BOOT, default: c)
   -p, --port <port>       FujiNet TCP serial port (env: FUJINET_PORT, default: 65504)

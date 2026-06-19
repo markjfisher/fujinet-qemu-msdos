@@ -3,169 +3,48 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 
-# --- Repository paths (relative to this repo unless absolute) ---
-# FUJINET_MSDOS is required. NIO_APPS is optional.
-FUJINET_MSDOS=${FUJINET_MSDOS:-}
-NIO_APPS=${NIO_APPS:-}
-
-resolve_repo_path() {
-    local path=$1
-    if [[ "$path" == /* ]]; then
-        printf '%s\n' "$path"
-    else
-        printf '%s\n' "$SCRIPT_DIR/$path"
-    fi
-}
-
-BASE_IMAGE=${BASE_IMAGE:-"$SCRIPT_DIR/msdos.qcow2"}
-OUTPUT_IMAGE=${OUTPUT_IMAGE:-"$SCRIPT_DIR/msdos-nio.qcow2"}
-DRIVER=${DRIVER:-}
-INJECT_APPS=${INJECT_APPS:-true}
-
 usage() {
     cat <<EOF
 Usage: $(basename "$0") [OPTIONS]
 
 Build an MS-DOS qcow2 image containing the NIO FUJINET.SYS driver.
 
+Driver-only output defaults to build/msdos-nio.qcow2.
+When --apps-manifest is used, output defaults to build/msdos-nio-apps.qcow2.
+
 Options:
-  -b, --base <image>       Base MS-DOS qcow/qcow2 image (env: BASE_IMAGE)
-  -o, --output <image>     Output qcow2 image (env: OUTPUT_IMAGE)
-  -m, --msdos-dir <path>   fujinet-msdos repository (env: FUJINET_MSDOS)
-  -d, --driver <path>      FUJINET.SYS to inject (env: DRIVER)
-  -a, --apps-dir <path>    nio-apps/msdos directory (env: NIO_APPS)
-      --no-apps            Do not inject nio-apps MS-DOS test executables
-  -h, --help               Show this help message
+  -b, --base <image>           Base MS-DOS qcow/qcow2 image (env: BASE_IMAGE)
+  -o, --output <image>         Output qcow2 image (env: OUTPUT_IMAGE)
+  -m, --msdos-dir <path>       fujinet-msdos repository (env: FUJINET_MSDOS)
+  -d, --driver <path>          FUJINET.SYS to inject (env: DRIVER)
+      --apps-manifest <file>   YAML app manifest (env: APPS_MANIFEST)
+  -h, --help                   Show this help message
 
 Repository paths (relative to this repo unless absolute):
   FUJINET_MSDOS (required)
-  NIO_APPS (optional)
 
-Defaults:
-  BASE_IMAGE=$BASE_IMAGE
-  OUTPUT_IMAGE=$OUTPUT_IMAGE
-  DRIVER=<FUJINET_MSDOS>/sys/fujinet.sys
+App paths are listed in manifests/apps.example.yaml. Copy it to
+manifests/apps.yaml and set environment variables such as NIO_APPS and
+BOUNCE_WORLD before building with --apps-manifest.
+
+Examples:
+  FUJINET_MSDOS=../../../msdos/fujinet-msdos $(basename "$0")
+  FUJINET_MSDOS=../../../msdos/fujinet-msdos \\
+    NIO_APPS=../nio-apps/msdos \\
+    BOUNCE_WORLD=../../../atari/bounce-world-client-nio \\
+    $(basename "$0") --apps-manifest manifests/apps.yaml
 EOF
 }
 
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        -b|--base)
-            BASE_IMAGE=$2; shift 2 ;;
-        -o|--output)
-            OUTPUT_IMAGE=$2; shift 2 ;;
-        -m|--msdos-dir)
-            FUJINET_MSDOS=$2; shift 2 ;;
-        -d|--driver)
-            DRIVER=$2; shift 2 ;;
-        -a|--apps-dir)
-            NIO_APPS=$2; shift 2 ;;
-        --no-apps)
-            INJECT_APPS=false; shift ;;
-        -h|--help)
-            usage; exit 0 ;;
-        *)
-            echo "Unknown option: $1" >&2
-            echo >&2
-            usage >&2
-            exit 1 ;;
-    esac
-done
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+    usage
+    exit 0
+fi
 
-if [[ -z "$FUJINET_MSDOS" ]]; then
-    echo "FUJINET_MSDOS is not defined." >&2
-    echo "Set FUJINET_MSDOS to the fujinet-msdos repository (relative or absolute path)." >&2
+if ! command -v uv >/dev/null 2>&1; then
+    echo "Missing required tool: uv" >&2
+    echo "Install uv (see fujinet-nio README prerequisites)." >&2
     exit 1
 fi
 
-FUJINET_MSDOS=$(resolve_repo_path "$FUJINET_MSDOS")
-
-if [[ ! -d "$FUJINET_MSDOS" ]]; then
-    echo "FUJINET_MSDOS does not exist: $FUJINET_MSDOS" >&2
-    exit 1
-fi
-
-if [[ -n "$NIO_APPS" ]]; then
-    NIO_APPS=$(resolve_repo_path "$NIO_APPS")
-fi
-
-if [[ -z "$DRIVER" ]]; then
-    DRIVER="$FUJINET_MSDOS/sys/fujinet.sys"
-else
-    DRIVER=$(resolve_repo_path "$DRIVER")
-fi
-
-for tool in qemu-img fdisk mcopy mdir; do
-    if ! command -v "$tool" >/dev/null 2>&1; then
-        echo "Missing required tool: $tool" >&2
-        exit 1
-    fi
-done
-
-if [[ ! -f "$BASE_IMAGE" ]]; then
-    echo "Base image not found: $BASE_IMAGE" >&2
-    exit 1
-fi
-
-if [[ ! -f "$DRIVER" ]]; then
-    echo "Driver not found: $DRIVER" >&2
-    echo "Build fujinet-msdos first, or pass --driver /path/to/FUJINET.SYS" >&2
-    exit 1
-fi
-
-RAW_IMAGE=$(mktemp --tmpdir fujinet-msdos-nio.XXXXXX.raw)
-trap 'rm -f "$RAW_IMAGE"' EXIT
-
-echo "Converting base image to temporary raw image..."
-qemu-img convert -O raw "$BASE_IMAGE" "$RAW_IMAGE"
-
-PARTITION_START=$(
-    fdisk -l "$RAW_IMAGE" |
-    awk -v raw="$RAW_IMAGE" '
-        $1 == raw "1" && $2 == "*" && $3 ~ /^[0-9]+$/ { print $3; exit }
-        $1 == raw "1" && $2 ~ /^[0-9]+$/ { print $2; exit }
-        $1 ~ /1$/ && $2 == "*" && $3 ~ /^[0-9]+$/ { print $3; exit }
-        $1 ~ /1$/ && $2 ~ /^[0-9]+$/ { print $2; exit }
-    '
-)
-
-if [[ -z "$PARTITION_START" ]]; then
-    echo "Could not determine first partition start sector in $BASE_IMAGE" >&2
-    exit 1
-fi
-
-FS_OFFSET=$((PARTITION_START * 512))
-
-echo "Injecting driver at FAT offset $FS_OFFSET..."
-mcopy -o -i "$RAW_IMAGE@@$FS_OFFSET" "$DRIVER" ::/FUJINET.SYS
-mdir -i "$RAW_IMAGE@@$FS_OFFSET" ::/FUJINET.SYS
-
-if [[ "$INJECT_APPS" == "true" ]]; then
-    if [[ -z "$NIO_APPS" ]]; then
-        echo "NIO_APPS is not defined; skipping NIO test app injection." >&2
-        echo "Set NIO_APPS to inject NIOPROBE.EXE and NIOREAD.EXE." >&2
-    else
-        APP_DIR="$NIO_APPS/bin"
-        APPS=("$APP_DIR/nioprobe.exe" "$APP_DIR/nioread.exe")
-        MISSING_APPS=()
-
-        for app in "${APPS[@]}"; do
-            [[ -f "$app" ]] || MISSING_APPS+=("$app")
-        done
-
-        if [[ ${#MISSING_APPS[@]} -gt 0 ]]; then
-            echo "Skipping NIO test app injection; missing executable(s):" >&2
-            printf '  %s\n' "${MISSING_APPS[@]}" >&2
-            echo "Build them with: make -C $NIO_APPS" >&2
-        else
-            echo "Injecting NIO test applications..."
-            mcopy -o -i "$RAW_IMAGE@@$FS_OFFSET" "${APPS[@]}" ::/
-            mdir -i "$RAW_IMAGE@@$FS_OFFSET" ::/NIOPROBE.EXE ::/NIOREAD.EXE
-        fi
-    fi
-fi
-
-echo "Writing qcow2 image: $OUTPUT_IMAGE"
-rm -f "$OUTPUT_IMAGE"
-qemu-img convert -O qcow2 "$RAW_IMAGE" "$OUTPUT_IMAGE"
-qemu-img info "$OUTPUT_IMAGE"
+exec uv run --directory "$SCRIPT_DIR" fujinet-qemu-msdos "$@"
