@@ -1,6 +1,8 @@
 fujinet
 fujinet/*
+fujinet-data/
 disks/*
 **/*.bak
 **/*.img
 **/*.dsk
+**/*.raw
