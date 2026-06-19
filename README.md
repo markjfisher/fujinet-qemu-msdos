@@ -1,188 +1,51 @@
-# QEMU with FujiNet
+# QEMU MS-DOS for FujiNet
 
-This repository supports two MS-DOS workflows:
+This repository contains QEMU helpers and a base MS-DOS 6.22 hard disk image
+for FujiNet testing.
 
-- `run-qemu`: the original legacy `fujinet-firmware` workflow.
-- `run-qemu-nio`: the NIO workflow using `fujinet-nio` FujiBus over TCP serial.
+There are two workflows:
 
-The NIO workflow should be used for the clean MS-DOS NIO driver. It does not use
-the legacy Atari/SIO-derived FujiNet transport.
+- **NIO workflow**: current path for `fujinet-nio` and the clean MS-DOS NIO
+  `FUJINET.SYS` driver.
+- **Legacy workflow**: older `run-qemu` path for `fujinet-firmware` RS232
+  testing.
 
-## Using fujinet-nio
+New MS-DOS work should normally use the NIO workflow.
 
-Build the POSIX TCP FujiBus profile in `fujinet-nio`:
+## NIO Quick Start
 
-```sh
-cd /path/to/fujinet-nio
-./build.sh -cp fujibus-tcp-debug
-```
-
-Build the MS-DOS NIO driver in `fujinet-msdos`:
+Build the NIO qcow2 image with driver and apps:
 
 ```sh
-cd /path/to/fujinet-msdos
-make -C sys FUJINET_TRANSPORT=NIO
-```
-
-Optionally build MS-DOS test applications and other NIO clients. App injection is
-controlled by a YAML manifest; see `manifests/apps.example.yaml`.
-
-```sh
-cd /path/to/nio-apps
-make -C msdos clean all
-```
-
-Create the NIO boot image by cloning `msdos.qcow2` and injecting the NIO driver.
-Generated images are written under `build/` and are not committed to git.
-
-Driver only (`build/msdos-nio.qcow2`):
-
-```sh
-export FUJINET_MSDOS=/path/to/fujinet-msdos
-./build-nio-qcow
-```
-
-Driver plus apps (`build/msdos-nio-apps.qcow2`):
-
-```sh
-cp manifests/apps.example.yaml manifests/apps.yaml
-export FUJINET_MSDOS=/path/to/fujinet-msdos
-export NIO_APPS=/path/to/nio-apps/msdos
-export BOUNCE_WORLD_CLIENT_NIO=/path/to/bounce-world-client-nio
 ./build-nio-qcow --apps-manifest manifests/apps.yaml
 ```
 
-Each manifest entry maps a host file to an 8.3 FAT name on `C:\`. Optional
-entries (`required: false`) are skipped when the source file is missing.
-
-Run QEMU with `fujinet-nio`:
-
-```sh
-./run-qemu-nio
-```
-
-For an apps image:
+Run it:
 
 ```sh
 ./run-qemu-nio --hda build/msdos-nio-apps.qcow2
 ```
 
-`run-qemu-nio` starts `fujinet-nio` from
-`../fujinet-nio/build/fujibus-tcp-debug/fujinet-nio`, waits for the TCP serial
-listener, and then launches QEMU with `build/msdos-nio.qcow2` by default.
+The detailed NIO guide is in [docs/nio-workflow.md](docs/nio-workflow.md).
+It covers prerequisites, building `fujinet-nio`, building `FUJINET.SYS`,
+creating `manifests/apps.yaml`, creating raw FAT disk images, and the DOS
+`FHOST` / `FIN` / `FMOUNT` workflow.
 
-The committed base image is `msdos.qcow2`. Generated NIO images live under
-`build/` and should not be committed. If `msdos-nio.qcow2` in the repo root
-was tracked previously, remove it with `git rm --cached msdos-nio.qcow2`.
+## Repository Contents
 
-At the MS-DOS prompt, run:
+- `msdos.qcow2`: base MS-DOS boot image.
+- `build-nio-qcow`: creates generated NIO qcow2 images under `build/`.
+- `run-qemu-nio`: starts `fujinet-nio` and QEMU with FujiBus over TCP serial.
+- `scripts/create_msdos_img.py`: creates raw FAT12/FAT16 images for mounting
+  through FujiNet.
+- `manifests/apps.example.yaml`: example app injection manifest.
+- `fujinet-data/`: host filesystem root exposed to `fujinet-nio`.
+- `run-qemu`: legacy `fujinet-firmware` launcher.
 
-```dos
-NIOPROBE
-NIOREAD
-```
+Generated files under `build/` are not committed.
 
-Use `DIR` to confirm the tools are present on `C:\`.
+## Fujinet-firmware Script
 
-The script also creates a separate raw FAT image at
-`fujinet-data/dos/fn-dos.img` if it does not exist. This is the disk exposed by
-NIO `DiskService`; the QEMU boot qcow image is not mounted by NIO.
-
-Generated NIO config:
-
-```yaml
-mounts:
-  - slot: 1
-    uri: "host:/dos/fn-dos.img"
-    mode: "rw"
-    enabled: true
-    sector_size_hint: 512
-channel:
-  tcp_host: "127.0.0.1"
-  tcp_port: 65504
-```
-
-Key `run-qemu-nio` options:
-
-| Flag | Env var | Default | Description |
-|---|---|---|---|
-| `-m`, `--memory` | `MEMORY` | `64` | RAM in MB for the QEMU machine |
-| `-d`, `--hda` | `HDA` | `build/msdos-nio.qcow2` | NIO hard disk image path |
-| `-f`, `--fda` | `FDA` | _(none)_ | Floppy disk image path |
-| `-b`, `--boot` | `BOOT` | `c` | Boot device (`c` = hard disk, `a` = floppy) |
-| `-p`, `--port` | `FUJINET_PORT` | `65504` | FujiNet NIO TCP serial port |
-| `-N`, `--nio-bin` | `FUJINET_NIO_BIN` | `../fujinet-nio/build/fujibus-tcp-debug/fujinet-nio` | fujinet-nio binary |
-| `-D`, `--nio-disk` | `NIO_DISK` | `fujinet-data/dos/fn-dos.img` | Raw FAT disk exposed by NIO |
-| `-n`, `--no-pkill` | `PKILL_ENABLED=false` | _(pkill enabled)_ | Skip killing existing fujinet-nio processes |
-
-`--nio-disk` must point under `fujinet-data/`, because `fujinet-nio` exposes
-that directory as its `host:` filesystem.
-
-## Using run-qemu
-
-`run-qemu` starts FujiNet and launches QEMU with the correct serial configuration. Before using it, build the firmware first (see below).
-
-```sh
-./run-qemu
-```
-
-Key options (all can also be set via environment variables of the same name):
-
-| Flag | Env var | Default | Description |
-|---|---|---|---|
-| `-m`, `--memory` | `MEMORY` | `64` | RAM in MB for the QEMU machine |
-| `-d`, `--hda` | `HDA` | `msdos.qcow2` | Hard disk image path |
-| `-f`, `--fda` | `FDA` | _(none)_ | Floppy disk image path |
-| `-b`, `--boot` | `BOOT` | `c` | Boot device (`c` = hard disk, `a` = floppy) |
-| `-p`, `--port` | `FUJINET_PORT` | `65504` | FujiNet network port |
-| `-F`, `--fujinet-path` | `FUJINET_FIRMWARE_PATH` | `../fujinet-firmware` | Path to the fujinet-firmware repo |
-| `-n`, `--no-pkill` | `PKILL_ENABLED=false` | _(pkill enabled)_ | Skip killing existing fujinet processes |
-
-Examples:
-
-```sh
-# Boot from floppy
-./run-qemu --fda disks/Disk1.img --boot a
-
-# Use a custom firmware path, more memory, and skip pkill
-./run-qemu --fujinet-path /opt/fujinet --memory 128 --no-pkill
-```
-
-## Build fujinet-firmware for Serial (RS232)
-
-In the `fujinet-firmware` cloned source directory, run:
-
-```sh
-./build.sh -p RS232
-```
-
-The resulting binary and supporting files will be placed in `distfiles/`, which `run-qemu` uses via the `fujinet/` symlink.
-
-## Setting up QEMU
-
-### Create a hard disk 
-
-```sh
-qemu-img create -f qcow msdos.qcow2 200M
-```
-
->**_NOTE:_** This repository contains a pre-build MS-DOS 6.22 200MB hard disk image for convenience.  If a new hard disk is created then it will need the operating system, FujiNet driver, & any other FujiNet commands installed to it before it will work with the virtual FujiNet device that runs alongside QEMU.
-
-### Install MS-DOS 
-
-```sh
-qemu-system-i386 -hda msdos.disk -m 64 -L  -fda disks/Disk1.img -boot a
-```
-
-When the installer prompts to insert Disk #2... 
-
-1. `ctrl-alt-2` - get to the Qemu console
-1. `eject floppy0` - eject the floppy
-1. `change floppy0 disks/Disk2.img` - insert Disk #2
-1. `ctrl-alt-1` - change back to the emulator screen
-
-### Booting to the Hard Drive
-
-```sh
-qemu-system-i386 -hda msdos.qcow2 -m 64 -L . -serial tcp:localhost:65504,reconnect=1 -boot c
-```
+`run-qemu` remains for the original `fujinet-firmware` RS232 workflow. It is not
+used by the NIO driver. Prefer `build-nio-qcow` and `run-qemu-nio` for current
+MS-DOS NIO development.
