@@ -80,6 +80,8 @@ if [[ ! -f "$HDA" ]]; then
     echo "Build it with: ./build-nio-qcow" >&2
     exit 1
 fi
+HDA=$(cd "$(dirname "$HDA")" && pwd)/$(basename "$HDA")
+echo "Using HDA image: $HDA"
 
 HOST_ROOT="$SCRIPT_DIR/fujinet-data"
 HOST_DOS_DIR="$HOST_ROOT/dos"
