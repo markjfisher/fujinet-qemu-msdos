@@ -66,9 +66,9 @@ Manifest entries map host files to MS-DOS 8.3 filenames:
 
 ```yaml
 apps:
-  - src: ${NIO_APPS}/bin/fhost.exe
+  - src: ${NIO_APPS_MSDOS}/bin/fhost.exe
     name: FHOST.EXE
-  - src: ${NIO_APPS}/bin/fmount.exe
+  - src: ${NIO_APPS_MSDOS}/bin/fmount.exe
     name: FMOUNT.EXE
   - src: ${BOUNCE_WORLD_CLIENT_NIO}/build/bwcn.msdos.exe
     name: BWCN.EXE
@@ -78,7 +78,7 @@ apps:
 Fields:
 
 - `src`: host path to copy. Supports environment variables such as
-  `${NIO_APPS}` and `~`.
+  `${NIO_APPS_MSDOS}` and `~`.
 - `name`: destination filename on `C:\`. Use an MS-DOS 8.3 name.
 - `required`: optional. Defaults to `true`; set `false` to skip missing files.
 
@@ -86,7 +86,7 @@ Typical environment:
 
 ```sh
 export FUJINET_MSDOS=/path/to/fujinet-msdos
-export NIO_APPS=/path/to/nio-apps/msdos
+export NIO_APPS_MSDOS=/path/to/nio-apps/msdos
 export FUJINET_NIO_LIB=/path/to/fujinet-nio-lib
 export BOUNCE_WORLD_CLIENT_NIO=/path/to/bounce-world-client-nio
 ```

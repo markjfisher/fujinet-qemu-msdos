@@ -40,7 +40,7 @@ creating `manifests/apps.yaml`, creating raw FAT disk images, and the DOS
   through FujiNet.
 - `manifests/apps.example.yaml`: example app injection manifest.
 - `fujinet-data/`: host filesystem root exposed to `fujinet-nio`.
-- `run-qemu`: legacy `fujinet-firmware` launcher.
+- `run-qemu`: `fujinet-firmware` launcher.
 
 Generated files under `build/` are not committed.
 

@@ -24,14 +24,14 @@ Repository paths (relative to this repo unless absolute):
   FUJINET_MSDOS (required)
 
 App paths are listed in manifests/apps.example.yaml. Copy it to
-manifests/apps.yaml and set environment variables such as NIO_APPS and
+manifests/apps.yaml and set environment variables such as NIO_APPS_MSDOS and
 BOUNCE_WORLD before building with --apps-manifest.
 
 Examples:
-  FUJINET_MSDOS=../../../msdos/fujinet-msdos $(basename "$0")
-  FUJINET_MSDOS=../../../msdos/fujinet-msdos \\
-    NIO_APPS=../nio-apps/msdos \\
-    BOUNCE_WORLD=../../../atari/bounce-world-client-nio \\
+  FUJINET_MSDOS=/path/to/fujinet-msdos $(basename "$0")
+  FUJINET_MSDOS=/path/to/fujinet-msdos \\
+    NIO_APPS_MSDOS=/path/to/nio-apps/msdos \\
+    BOUNCE_WORLD=/path/to/bounce-world-client-nio \\
     $(basename "$0") --apps-manifest manifests/apps.yaml
 EOF
 }
