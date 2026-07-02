@@ -7,7 +7,7 @@ import os
 import sys
 from pathlib import Path
 
-from .inject import build_qcow2, resolve_path
+from .inject import DriverConfig, build_qcow2, resolve_path
 
 
 def repo_root() -> Path:
@@ -58,6 +58,41 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--repo-root",
         default=str(root),
         help="Repository root for resolving relative manifest paths",
+    )
+    parser.add_argument(
+        "--fuji-port",
+        default=os.environ.get("FUJI_PORT", ""),
+        help="FUJINET.SYS FUJI_PORT option for CONFIG.SYS (env: FUJI_PORT)",
+    )
+    parser.add_argument(
+        "--fuji-bps",
+        default=os.environ.get("FUJI_BPS", "115200"),
+        help="FUJINET.SYS FUJI_BPS option for CONFIG.SYS (env: FUJI_BPS, default: 115200)",
+    )
+    parser.add_argument(
+        "--fuji-batch-sectors",
+        default=os.environ.get("FUJI_BATCH_SECTORS", ""),
+        help="FUJINET.SYS FUJI_BATCH_SECTORS option (env: FUJI_BATCH_SECTORS)",
+    )
+    parser.add_argument(
+        "--fuji-readahead-sectors",
+        default=os.environ.get("FUJI_READAHEAD_SECTORS", ""),
+        help="FUJINET.SYS FUJI_READAHEAD_SECTORS option (env: FUJI_READAHEAD_SECTORS)",
+    )
+    parser.add_argument(
+        "--fuji-io-retries",
+        default=os.environ.get("FUJI_IO_RETRIES", ""),
+        help="FUJINET.SYS FUJI_IO_RETRIES option (env: FUJI_IO_RETRIES)",
+    )
+    parser.add_argument(
+        "--fuji-auto-downshift",
+        default=os.environ.get("FUJI_AUTO_DOWNSHIFT", ""),
+        help="FUJINET.SYS FUJI_AUTO_DOWNSHIFT option (env: FUJI_AUTO_DOWNSHIFT)",
+    )
+    parser.add_argument(
+        "--fuji-debug-io",
+        default=os.environ.get("FUJI_DEBUG_IO", ""),
+        help="FUJINET.SYS FUJI_DEBUG_IO option (env: FUJI_DEBUG_IO)",
     )
 
     args = parser.parse_args(argv)
@@ -119,6 +154,15 @@ def main(argv: list[str] | None = None) -> int:
             output_image=args.output_image,
             driver=args.driver_path,
             apps_manifest=args.apps_manifest_path,
+            driver_config=DriverConfig(
+                fuji_port=args.fuji_port.strip(),
+                fuji_bps=args.fuji_bps.strip(),
+                batch_sectors=args.fuji_batch_sectors.strip(),
+                readahead_sectors=args.fuji_readahead_sectors.strip(),
+                io_retries=args.fuji_io_retries.strip(),
+                auto_downshift=args.fuji_auto_downshift.strip(),
+                debug_io=args.fuji_debug_io.strip(),
+            ),
         )
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
         print(exc, file=sys.stderr)

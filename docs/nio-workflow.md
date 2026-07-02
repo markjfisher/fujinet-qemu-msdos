@@ -121,6 +121,33 @@ build/msdos-nio-apps.qcow2
 `FUJINET.SYS`, then optionally copies manifest applications into the DOS
 filesystem. Generated images under `build/` are not committed.
 
+`FUJINET.SYS` startup options are written into the generated image's
+`CONFIG.SYS`. The builder preserves existing base-image lines such as
+`HIMEM.SYS` and replaces any previous `FUJINET.SYS` line. Set driver options
+when building the qcow2 image, not when running QEMU:
+
+```sh
+FUJI_BPS=9600 ./build-nio-qcow --apps-manifest manifests/apps.yaml
+```
+
+Equivalent explicit flags are available:
+
+```sh
+./build-nio-qcow --fuji-bps 9600 --apps-manifest manifests/apps.yaml
+```
+
+Useful build-time driver options:
+
+| Flag | Env var | Default | CONFIG.SYS option |
+|---|---|---|---|
+| `--fuji-port` | `FUJI_PORT` | none | `FUJI_PORT` |
+| `--fuji-bps` | `FUJI_BPS` | `115200` | `FUJI_BPS` |
+| `--fuji-batch-sectors` | `FUJI_BATCH_SECTORS` | none | `FUJI_BATCH_SECTORS` |
+| `--fuji-readahead-sectors` | `FUJI_READAHEAD_SECTORS` | none | `FUJI_READAHEAD_SECTORS` |
+| `--fuji-io-retries` | `FUJI_IO_RETRIES` | none | `FUJI_IO_RETRIES` |
+| `--fuji-auto-downshift` | `FUJI_AUTO_DOWNSHIFT` | none | `FUJI_AUTO_DOWNSHIFT` |
+| `--fuji-debug-io` | `FUJI_DEBUG_IO` | none | `FUJI_DEBUG_IO` |
+
 ## Run The Emulator
 
 Start QEMU with the app image:
@@ -129,14 +156,23 @@ Start QEMU with the app image:
 ./run-qemu-nio --hda build/msdos-nio-apps.qcow2
 ```
 
-The script starts `fujinet-nio`, waits for the TCP serial listener, then starts
-QEMU with the serial port connected to FujiBus over TCP.
+By default the script starts POSIX `fujinet-nio`, waits for the TCP serial
+listener, then starts QEMU with the serial port connected to FujiBus over TCP.
 
 The most common full sequence is:
 
 ```sh
 ./build-nio-qcow --apps-manifest manifests/apps.yaml
 ./run-qemu-nio --hda build/msdos-nio-apps.qcow2
+```
+
+To test the same DOS image against a real serial FujiNet device, use serial
+transport mode. In this mode the script does not start POSIX `fujinet-nio`;
+QEMU COM1 is connected directly to the host serial character device.
+
+```sh
+./run-qemu-nio --transport serial --serial-dev /dev/ttyUSB0 \
+  --hda build/msdos-nio-apps.qcow2
 ```
 
 Useful `run-qemu-nio` options:
@@ -147,17 +183,24 @@ Useful `run-qemu-nio` options:
 | `-d`, `--hda` | `HDA` | `build/msdos-nio.qcow2` | Boot hard disk image |
 | `-f`, `--fda` | `FDA` | none | Optional floppy image |
 | `-b`, `--boot` | `BOOT` | `c` | Boot device: `c` hard disk, `a` floppy |
+| `-t`, `--transport` | `FUJINET_TRANSPORT` | `tcp` | `tcp` for POSIX `fujinet-nio`, `serial` for a host serial device |
 | `-p`, `--port` | `FUJINET_PORT` | `65504` | FujiNet TCP serial port |
 | `-N`, `--nio-bin` | `FUJINET_NIO_BIN` | `../fujinet-nio/build/fujibus-tcp-debug/fujinet-nio` | `fujinet-nio` binary |
 | `-D`, `--nio-disk` | `NIO_DISK` | `fujinet-data/dos/fn-dos.img` | Default raw FAT image exposed as `host:/dos/fn-dos.img` |
+| `-s`, `--serial-dev` | `FUJINET_SERIAL` | `/dev/ttyUSB0` | Host serial character device for `--transport serial` |
 | `-n`, `--no-pkill` | `PKILL_ENABLED=false` | pkill enabled | Do not kill existing `fujinet-nio` processes |
+| `--dry-run` | `DRY_RUN=true` | disabled | Print the QEMU command without starting QEMU or `fujinet-nio` |
 
-`run-qemu-nio` writes `fujinet-data/fujinet.yaml` on startup. By default slot 0
-is configured as a pending mount for:
+In TCP mode, `run-qemu-nio` writes `fujinet-data/fujinet.yaml` on startup. By
+default slot 0 is configured as a pending mount for:
 
 ```text
 host:/dos/fn-dos.img
 ```
+
+In serial mode, the external FujiNet device owns its own storage and network
+configuration. Configure host slots on that device, or use DOS apps such as
+`FHOST`, `FIN`, and `FMOUNT`.
 
 For TNFS-hosted images, use `FHOST`, `FIN`, and `FMOUNT` from inside DOS.
 

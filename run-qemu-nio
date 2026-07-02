@@ -9,27 +9,38 @@ FUJINET_PORT=${FUJINET_PORT:-65504}
 FUJINET_HOST=${FUJINET_HOST:-127.0.0.1}
 FUJINET_NIO_PATH=${FUJINET_NIO_PATH:-"$SCRIPT_DIR/../fujinet-nio"}
 FUJINET_NIO_BIN=${FUJINET_NIO_BIN:-"$FUJINET_NIO_PATH/build/fujibus-tcp-debug/fujinet-nio"}
+FUJINET_TRANSPORT=${FUJINET_TRANSPORT:-tcp}
+FUJINET_SERIAL=${FUJINET_SERIAL:-/dev/ttyUSB0}
 PKILL_ENABLED=${PKILL_ENABLED:-true}
 FDA=${FDA:-}
 BOOT=${BOOT:-c}
 NIO_DISK_MB=${NIO_DISK_MB:-32}
 NIO_DISK=${NIO_DISK:-"$SCRIPT_DIR/fujinet-data/dos/fn-dos.img"}
+FUJINET_PID=
+DRY_RUN=${DRY_RUN:-false}
 
 usage() {
     cat <<EOF
 Usage: $(basename "$0") [OPTIONS]
 
-Start fujinet-nio and launch QEMU for the NIO MS-DOS driver image.
+Launch QEMU for the NIO MS-DOS driver image.
+
+Transport modes:
+  tcp      Start POSIX fujinet-nio and connect QEMU COM1 to its TCP serial port.
+  serial   Connect QEMU COM1 directly to a host serial character device.
 
 Options:
   -m, --memory <MB>       RAM for the QEMU machine (env: MEMORY, default: 64)
   -d, --hda <image>       Hard disk image (env: HDA, default: build/msdos-nio.qcow2)
   -f, --fda <image>       Floppy disk image (env: FDA, default: none)
   -b, --boot <device>     Boot device: c=hard disk, a=floppy (env: BOOT, default: c)
+  -t, --transport <mode>  tcp or serial (env: FUJINET_TRANSPORT, default: tcp)
   -p, --port <port>       FujiNet TCP serial port (env: FUJINET_PORT, default: 65504)
   -N, --nio-bin <path>    fujinet-nio binary (env: FUJINET_NIO_BIN)
   -D, --nio-disk <path>   Raw FAT disk exposed by NIO (env: NIO_DISK)
+  -s, --serial-dev <path> Host serial device for --transport serial (env: FUJINET_SERIAL, default: /dev/ttyUSB0)
   -n, --no-pkill          Skip killing existing fujinet-nio processes
+      --dry-run           Print the QEMU command without starting QEMU or fujinet-nio
   -h, --help              Show this help message
 EOF
 }
@@ -44,14 +55,20 @@ while [[ $# -gt 0 ]]; do
             FDA=$2; shift 2 ;;
         -b|--boot)
             BOOT=$2; shift 2 ;;
+        -t|--transport)
+            FUJINET_TRANSPORT=$2; shift 2 ;;
         -p|--port)
             FUJINET_PORT=$2; shift 2 ;;
         -N|--nio-bin)
             FUJINET_NIO_BIN=$2; shift 2 ;;
         -D|--nio-disk)
             NIO_DISK=$2; shift 2 ;;
+        -s|--serial-dev)
+            FUJINET_SERIAL=$2; shift 2 ;;
         -n|--no-pkill)
             PKILL_ENABLED=false; shift ;;
+        --dry-run)
+            DRY_RUN=true; shift ;;
         -h|--help)
             usage; exit 0 ;;
         *)
@@ -62,18 +79,24 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-for tool in qemu-system-i386 mkfs.fat nc; do
+case "$FUJINET_TRANSPORT" in
+    tcp|serial) ;;
+    *)
+        echo "Invalid transport: $FUJINET_TRANSPORT (expected tcp or serial)" >&2
+        exit 2 ;;
+esac
+
+REQUIRED_TOOLS=(qemu-system-i386)
+if [[ "$FUJINET_TRANSPORT" == "tcp" ]]; then
+    REQUIRED_TOOLS+=(mkfs.fat nc)
+fi
+
+for tool in "${REQUIRED_TOOLS[@]}"; do
     if ! command -v "$tool" >/dev/null 2>&1; then
         echo "Missing required tool: $tool" >&2
         exit 1
     fi
 done
-
-if [[ ! -x "$FUJINET_NIO_BIN" ]]; then
-    echo "fujinet-nio binary not found or not executable: $FUJINET_NIO_BIN" >&2
-    echo "Build it first with: cmake --preset fujibus-tcp-debug && cmake --build --preset fujibus-tcp-debug-build" >&2
-    exit 1
-fi
 
 if [[ ! -f "$HDA" ]]; then
     echo "Hard disk image not found: $HDA" >&2
@@ -83,34 +106,45 @@ fi
 HDA=$(cd "$(dirname "$HDA")" && pwd)/$(basename "$HDA")
 echo "Using HDA image: $HDA"
 
+if [[ "$FUJINET_TRANSPORT" == "tcp" && ! -x "$FUJINET_NIO_BIN" ]]; then
+    echo "fujinet-nio binary not found or not executable: $FUJINET_NIO_BIN" >&2
+    echo "Build it first with: cmake --preset fujibus-tcp-debug && cmake --build --preset fujibus-tcp-debug-build" >&2
+    exit 1
+fi
+
+if [[ "$FUJINET_TRANSPORT" == "serial" && ! -e "$FUJINET_SERIAL" ]]; then
+    echo "Serial device not found: $FUJINET_SERIAL" >&2
+    echo "Set it with --serial-dev /dev/ttyUSB0 or FUJINET_SERIAL=/dev/ttyUSB0" >&2
+    exit 1
+fi
+
 HOST_ROOT="$SCRIPT_DIR/fujinet-data"
 HOST_DOS_DIR="$HOST_ROOT/dos"
 
-NIO_DISK_DIR=$(dirname "$NIO_DISK")
-NIO_DISK_BASE=$(basename "$NIO_DISK")
-mkdir -p "$NIO_DISK_DIR"
-NIO_DISK_DIR_ABS=$(cd "$NIO_DISK_DIR" && pwd)
-NIO_DISK_ABS="$NIO_DISK_DIR_ABS/$NIO_DISK_BASE"
+if [[ "$FUJINET_TRANSPORT" == "tcp" ]]; then
+    NIO_DISK_DIR=$(dirname "$NIO_DISK")
+    NIO_DISK_BASE=$(basename "$NIO_DISK")
+    mkdir -p "$NIO_DISK_DIR"
+    NIO_DISK_DIR_ABS=$(cd "$NIO_DISK_DIR" && pwd)
+    NIO_DISK_ABS="$NIO_DISK_DIR_ABS/$NIO_DISK_BASE"
 
-case "$NIO_DISK_ABS" in
-    "$HOST_ROOT"/*) ;;
-    *)
-        echo "NIO disk must live under $HOST_ROOT so fujinet-nio can expose it as host: URI" >&2
-        echo "Requested: $NIO_DISK_ABS" >&2
-        exit 1 ;;
-esac
+    case "$NIO_DISK_ABS" in
+        "$HOST_ROOT"/*) ;;
+        *)
+            echo "NIO disk must live under $HOST_ROOT so fujinet-nio can expose it as host: URI" >&2
+            echo "Requested: $NIO_DISK_ABS" >&2
+            exit 1 ;;
+    esac
 
-NIO_DISK_URI_PATH="/${NIO_DISK_ABS#"$HOST_ROOT/"}"
+    NIO_DISK_URI_PATH="/${NIO_DISK_ABS#"$HOST_ROOT/"}"
 
-mkdir -p "$(dirname "$NIO_DISK")"
+    if [[ ! -f "$NIO_DISK_ABS" ]]; then
+        echo "Creating NIO raw FAT disk: $NIO_DISK_ABS (${NIO_DISK_MB} MiB)"
+        dd if=/dev/zero of="$NIO_DISK_ABS" bs=1M count="$NIO_DISK_MB" status=none
+        mkfs.fat -F 16 -n FNDOS "$NIO_DISK_ABS" >/dev/null
+    fi
 
-if [[ ! -f "$NIO_DISK_ABS" ]]; then
-    echo "Creating NIO raw FAT disk: $NIO_DISK_ABS (${NIO_DISK_MB} MiB)"
-    dd if=/dev/zero of="$NIO_DISK_ABS" bs=1M count="$NIO_DISK_MB" status=none
-    mkfs.fat -F 16 -n FNDOS "$NIO_DISK_ABS" >/dev/null
-fi
-
-cat > "$HOST_ROOT/fujinet.yaml" <<EOF
+    cat > "$HOST_ROOT/fujinet.yaml" <<EOF
 mounts:
   - slot: 1
     uri: "host:$NIO_DISK_URI_PATH"
@@ -122,26 +156,44 @@ channel:
   tcp_port: $FUJINET_PORT
 EOF
 
-if [[ "$PKILL_ENABLED" == "true" ]]; then
-    pkill -f "$FUJINET_NIO_BIN" || true
+    if [[ "$DRY_RUN" != "true" ]]; then
+        if [[ "$PKILL_ENABLED" == "true" ]]; then
+            pkill -f "$FUJINET_NIO_BIN" || true
+        fi
+
+        echo "Starting fujinet-nio..."
+        (cd "$SCRIPT_DIR" && "$FUJINET_NIO_BIN") &
+        FUJINET_PID=$!
+        trap 'if [[ -n "$FUJINET_PID" ]]; then kill "$FUJINET_PID" 2>/dev/null || true; fi' EXIT
+
+        echo "Waiting for fujinet-nio on $FUJINET_HOST:$FUJINET_PORT..."
+        while ! nc -z "$FUJINET_HOST" "$FUJINET_PORT" 2>/dev/null; do
+            sleep 0.5
+        done
+        echo "fujinet-nio started."
+    else
+        echo "Dry run: not starting fujinet-nio."
+    fi
+
+    QEMU_CHARDEV=(-chardev socket,id=fujinet,host="$FUJINET_HOST",port="$FUJINET_PORT",reconnect-ms=1000)
+else
+    echo "Using host serial device for QEMU COM1: $FUJINET_SERIAL"
+    echo "Start/configure the external FujiNet device before booting DOS."
+    QEMU_CHARDEV=(-chardev serial,id=fujinet,path="$FUJINET_SERIAL")
 fi
 
-echo "Starting fujinet-nio..."
-(cd "$SCRIPT_DIR" && "$FUJINET_NIO_BIN") &
-FUJINET_PID=$!
-trap 'kill "$FUJINET_PID" 2>/dev/null || true' EXIT
-
-echo "Waiting for fujinet-nio on $FUJINET_HOST:$FUJINET_PORT..."
-while ! nc -z "$FUJINET_HOST" "$FUJINET_PORT" 2>/dev/null; do
-    sleep 0.5
-done
-echo "fujinet-nio started."
-
 QEMU_ARGS=(-hda "$HDA" -m "$MEMORY" -L .
-    -chardev socket,id=fujinet,host="$FUJINET_HOST",port="$FUJINET_PORT",reconnect-ms=1000
+    "${QEMU_CHARDEV[@]}"
     -serial chardev:fujinet
     -boot "$BOOT")
 
 [[ -n "$FDA" ]] && QEMU_ARGS+=(-fda "$FDA")
+
+if [[ "$DRY_RUN" == "true" ]]; then
+    printf 'QEMU command:'
+    printf ' %q' qemu-system-i386 "${QEMU_ARGS[@]}"
+    printf '\n'
+    exit 0
+fi
 
 qemu-system-i386 "${QEMU_ARGS[@]}"

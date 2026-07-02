@@ -24,6 +24,17 @@ class AppEntry:
     required: bool = True
 
 
+@dataclass(frozen=True)
+class DriverConfig:
+    fuji_port: str = ""
+    fuji_bps: str = "115200"
+    batch_sectors: str = ""
+    readahead_sectors: str = ""
+    io_retries: str = ""
+    auto_downshift: str = ""
+    debug_io: str = ""
+
+
 def resolve_path(path: str, repo_root: Path) -> Path:
     expanded = os.path.expanduser(os.path.expandvars(path.strip()))
     candidate = Path(expanded)
@@ -118,10 +129,92 @@ def mdir(raw_image: Path, offset: int, names: list[str]) -> None:
     run_checked(args)
 
 
+def read_dos_file(raw_image: Path, offset: int, name: str) -> str:
+    image_spec = f"{raw_image}@@{offset}"
+    with tempfile.TemporaryDirectory(prefix="fujinet-msdos-read.") as tmpdir:
+        dest = Path(tmpdir) / name
+        result = subprocess.run(
+            ["mcopy", "-i", image_spec, f"::{name}", str(dest)],
+            text=True,
+            capture_output=True,
+        )
+        if result.returncode != 0:
+            return ""
+        return dest.read_text(encoding="ascii", errors="ignore")
+
+
 def inject_driver(raw_image: Path, offset: int, driver: Path) -> None:
     print(f"Injecting driver at FAT offset {offset}...", flush=True)
     mcopy(raw_image, offset, driver, "FUJINET.SYS")
     mdir(raw_image, offset, ["FUJINET.SYS"])
+
+
+def driver_config_line(config: DriverConfig) -> str:
+    parts = ["DEVICE=FUJINET.SYS"]
+    if config.fuji_port:
+        parts.append(f"FUJI_PORT={config.fuji_port}")
+    if config.fuji_bps:
+        parts.append(f"FUJI_BPS={config.fuji_bps}")
+    if config.batch_sectors:
+        parts.append(f"FUJI_BATCH_SECTORS={config.batch_sectors}")
+    if config.readahead_sectors:
+        parts.append(f"FUJI_READAHEAD_SECTORS={config.readahead_sectors}")
+    if config.io_retries:
+        parts.append(f"FUJI_IO_RETRIES={config.io_retries}")
+    if config.auto_downshift:
+        parts.append(f"FUJI_AUTO_DOWNSHIFT={config.auto_downshift}")
+    if config.debug_io:
+        parts.append(f"FUJI_DEBUG_IO={config.debug_io}")
+    return " ".join(parts)
+
+
+def inject_config(raw_image: Path, offset: int, config: DriverConfig) -> None:
+    existing = read_dos_file(raw_image, offset, "CONFIG.SYS")
+    lines: list[str] = []
+    have_files = False
+    have_buffers = False
+
+    for raw_line in existing.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        line = raw_line.rstrip()
+        stripped = line.strip()
+        upper = stripped.upper()
+        if not stripped:
+            continue
+        if (
+            (upper.startswith("DEVICE=") or upper.startswith("DEVICEHIGH="))
+            and "FUJINET.SYS" in upper
+        ):
+            continue
+        if upper.startswith("FILES="):
+            have_files = True
+        if upper.startswith("BUFFERS="):
+            have_buffers = True
+        lines.append(line)
+
+    if not have_files:
+        lines.append("FILES=20")
+    if not have_buffers:
+        lines.append("BUFFERS=10")
+    lines.append(driver_config_line(config))
+
+    contents = "\r\n".join(lines) + "\r\n"
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="ascii",
+        newline="",
+        suffix=".sys",
+        prefix="fujinet-msdos-config.",
+        delete=False,
+    ) as handle:
+        config_path = Path(handle.name)
+        handle.write(contents)
+
+    try:
+        print(f"Injecting CONFIG.SYS: {driver_config_line(config)}", flush=True)
+        mcopy(raw_image, offset, config_path, "CONFIG.SYS")
+        mdir(raw_image, offset, ["CONFIG.SYS"])
+    finally:
+        config_path.unlink(missing_ok=True)
 
 
 def inject_apps(
@@ -167,6 +260,7 @@ def build_qcow2(
     output_image: Path,
     driver: Path,
     apps_manifest: Path | None,
+    driver_config: DriverConfig,
 ) -> None:
     require_tools()
 
@@ -199,6 +293,7 @@ def build_qcow2(
 
         offset = partition_start_sector(raw_image) * 512
         inject_driver(raw_image, offset, driver)
+        inject_config(raw_image, offset, driver_config)
 
         if apps:
             inject_apps(raw_image, offset, apps)

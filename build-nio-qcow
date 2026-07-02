@@ -18,6 +18,8 @@ Options:
   -m, --msdos-dir <path>       fujinet-msdos repository (env: FUJINET_MSDOS)
   -d, --driver <path>          FUJINET.SYS to inject (env: DRIVER)
       --apps-manifest <file>   YAML app manifest (env: APPS_MANIFEST)
+      --fuji-bps <bps>         CONFIG.SYS FUJI_BPS value (env: FUJI_BPS, default: 115200)
+      --fuji-port <port>       CONFIG.SYS FUJI_PORT value (env: FUJI_PORT)
   -h, --help                   Show this help message
 
 Repository paths (relative to this repo unless absolute):
@@ -29,6 +31,7 @@ BOUNCE_WORLD before building with --apps-manifest.
 
 Examples:
   FUJINET_MSDOS=/path/to/fujinet-msdos $(basename "$0")
+  FUJI_BPS=9600 FUJINET_MSDOS=/path/to/fujinet-msdos $(basename "$0")
   FUJINET_MSDOS=/path/to/fujinet-msdos \\
     NIO_APPS_MSDOS=/path/to/nio-apps/msdos \\
     BOUNCE_WORLD=/path/to/bounce-world-client-nio \\
