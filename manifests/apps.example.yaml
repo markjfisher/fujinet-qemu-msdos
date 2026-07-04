@@ -7,10 +7,10 @@
 # Optional apps (required: false) are skipped when the source file is missing.
 
 apps:
-  - src: ${NIO_APPS_MSDOS}/bin/nioprobe.exe
+  - src: ${NIO_APPS_MSDOS_BIN}/nioprobe.exe
     name: NIOPROBE.EXE
     required: false
-  - src: ${NIO_APPS_MSDOS}/bin/nioread.exe
+  - src: ${NIO_APPS_MSDOS_BIN}/nioread.exe
     name: NIOREAD.EXE
     required: false
   - src: ${BOUNCE_WORLD}/build/bwcn.msdos.exe
