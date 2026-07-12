@@ -121,6 +121,16 @@ build/msdos-nio-apps.qcow2
 `FUJINET.SYS`, then optionally copies manifest applications into the DOS
 filesystem. Generated images under `build/` are not committed.
 
+Build a raw FAT image from the same applications manifest for TNFS/FujiNet disk
+mounting:
+
+```sh
+./build-apps-img --apps-manifest manifests/apps.yaml --output build/msdos-nio-apps.img
+```
+
+This writes a mountable FAT image instead of a bootable QEMU hard disk. It uses
+the same `src`, `name`, and `required` manifest fields as `build-nio-qcow`.
+
 `FUJINET.SYS` startup options are written into the generated image's
 `CONFIG.SYS`. The builder preserves existing base-image lines such as
 `HIMEM.SYS` and replaces any previous `FUJINET.SYS` line. Set driver options
