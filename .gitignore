@@ -4,7 +4,7 @@ fujinet-data/
 disks/*
 build/
 manifests/apps.yaml
-msdos-nio.qcow2
+/msdos-nio*.qcow2
 **/*.bak
 **/*.img
 **/*.dsk

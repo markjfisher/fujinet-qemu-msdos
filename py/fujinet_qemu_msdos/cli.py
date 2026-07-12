@@ -34,7 +34,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "-o",
         "--output",
-        default=None,
+        default=os.environ.get("OUTPUT_IMAGE", ""),
         help="Output qcow2 image (env: OUTPUT_IMAGE)",
     )
     parser.add_argument(
@@ -114,7 +114,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     else:
         args.driver_path = None
 
-    if args.output:
+    if args.output.strip():
         args.output_image = resolve_path(args.output, args.repo_root)
     elif args.apps_manifest_path is not None:
         args.output_image = build_dir / "msdos-nio-apps.qcow2"
