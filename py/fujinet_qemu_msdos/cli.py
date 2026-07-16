@@ -75,11 +75,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="FUJINET.SYS FUJI_BATCH_SECTORS option (env: FUJI_BATCH_SECTORS)",
     )
     parser.add_argument(
-        "--fuji-readahead-sectors",
-        default=os.environ.get("FUJI_READAHEAD_SECTORS", ""),
-        help="FUJINET.SYS FUJI_READAHEAD_SECTORS option (env: FUJI_READAHEAD_SECTORS)",
-    )
-    parser.add_argument(
         "--fuji-io-retries",
         default=os.environ.get("FUJI_IO_RETRIES", ""),
         help="FUJINET.SYS FUJI_IO_RETRIES option (env: FUJI_IO_RETRIES)",
@@ -158,7 +153,6 @@ def main(argv: list[str] | None = None) -> int:
                 fuji_port=args.fuji_port.strip(),
                 fuji_bps=args.fuji_bps.strip(),
                 batch_sectors=args.fuji_batch_sectors.strip(),
-                readahead_sectors=args.fuji_readahead_sectors.strip(),
                 io_retries=args.fuji_io_retries.strip(),
                 auto_downshift=args.fuji_auto_downshift.strip(),
                 debug_io=args.fuji_debug_io.strip(),

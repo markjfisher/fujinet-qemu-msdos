@@ -153,7 +153,6 @@ Useful build-time driver options:
 | `--fuji-port` | `FUJI_PORT` | none | `FUJI_PORT` |
 | `--fuji-bps` | `FUJI_BPS` | `115200` | `FUJI_BPS` |
 | `--fuji-batch-sectors` | `FUJI_BATCH_SECTORS` | none | `FUJI_BATCH_SECTORS` |
-| `--fuji-readahead-sectors` | `FUJI_READAHEAD_SECTORS` | none | `FUJI_READAHEAD_SECTORS` |
 | `--fuji-io-retries` | `FUJI_IO_RETRIES` | none | `FUJI_IO_RETRIES` |
 | `--fuji-auto-downshift` | `FUJI_AUTO_DOWNSHIFT` | none | `FUJI_AUTO_DOWNSHIFT` |
 | `--fuji-debug-io` | `FUJI_DEBUG_IO` | none | `FUJI_DEBUG_IO` |

@@ -29,7 +29,6 @@ class DriverConfig:
     fuji_port: str = ""
     fuji_bps: str = "115200"
     batch_sectors: str = ""
-    readahead_sectors: str = ""
     io_retries: str = ""
     auto_downshift: str = ""
     debug_io: str = ""
@@ -157,8 +156,6 @@ def driver_config_line(config: DriverConfig) -> str:
         parts.append(f"FUJI_BPS={config.fuji_bps}")
     if config.batch_sectors:
         parts.append(f"FUJI_BATCH_SECTORS={config.batch_sectors}")
-    if config.readahead_sectors:
-        parts.append(f"FUJI_READAHEAD_SECTORS={config.readahead_sectors}")
     if config.io_retries:
         parts.append(f"FUJI_IO_RETRIES={config.io_retries}")
     if config.auto_downshift:
