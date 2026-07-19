@@ -26,6 +26,12 @@ Run it:
 ./run-qemu-nio --hda build/msdos-nio-apps.qcow2
 ```
 
+Run it in the terminal with QEMU curses display:
+
+```sh
+./run-qemu-nio --hda build/msdos-nio-apps.qcow2 --display curses
+```
+
 Run the same image against a real serial FujiNet device instead of POSIX
 `fujinet-nio`:
 
@@ -46,7 +52,8 @@ creating `manifests/apps.yaml`, creating raw FAT disk images, and the DOS
 - `build-apps-img`: creates raw FAT images from the app manifest for TNFS or
   FujiNet disk mounting.
 - `run-qemu-nio`: starts QEMU with FujiBus over TCP serial or a real host
-  serial device.
+  serial device. It can also use QEMU's curses display for terminal-based UI
+  development.
 - `scripts/create_msdos_img.py`: creates raw FAT12/FAT16 images for mounting
   through FujiNet.
 - `manifests/apps.example.yaml`: example app injection manifest.

@@ -168,6 +168,16 @@ Start QEMU with the app image:
 By default the script starts POSIX `fujinet-nio`, waits for the TCP serial
 listener, then starts QEMU with the serial port connected to FujiBus over TCP.
 
+For terminal UI work, run QEMU with its curses display:
+
+```sh
+./run-qemu-nio --hda build/msdos-nio-apps.qcow2 --display curses
+```
+
+In curses display mode, QEMU needs to own the terminal. Do not pipe it through
+`tee` or another command that removes the real TTY. The workspace
+`msdos-dev-curses` target handles this correctly.
+
 The most common full sequence is:
 
 ```sh
@@ -196,6 +206,7 @@ Useful `run-qemu-nio` options:
 | `-p`, `--port` | `FUJINET_PORT` | `65504` | FujiNet TCP serial port |
 | `-N`, `--nio-bin` | `FUJINET_NIO_BIN` | `../fujinet-nio/build/fujibus-tcp-debug/fujinet-nio` | `fujinet-nio` binary |
 | `-D`, `--nio-disk` | `NIO_DISK` | `fujinet-data/dos/fn-dos.img` | Default raw FAT image exposed as `host:/dos/fn-dos.img` |
+| `--display` | `QEMU_DISPLAY` | none | QEMU display backend, e.g. `curses` |
 | `-s`, `--serial-dev` | `FUJINET_SERIAL` | `/dev/ttyUSB0` | Host serial character device for `--transport serial` |
 | `-n`, `--no-pkill` | `PKILL_ENABLED=false` | pkill enabled | Do not kill existing `fujinet-nio` processes |
 | `--dry-run` | `DRY_RUN=true` | disabled | Print the QEMU command without starting QEMU or `fujinet-nio` |

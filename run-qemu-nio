@@ -11,6 +11,8 @@ FUJINET_NIO_PATH=${FUJINET_NIO_PATH:-"$SCRIPT_DIR/../fujinet-nio"}
 FUJINET_NIO_BIN=${FUJINET_NIO_BIN:-"$FUJINET_NIO_PATH/build/fujibus-tcp-debug/fujinet-nio"}
 FUJINET_TRANSPORT=${FUJINET_TRANSPORT:-tcp}
 FUJINET_SERIAL=${FUJINET_SERIAL:-/dev/ttyUSB0}
+QEMU_DISPLAY=${QEMU_DISPLAY:-}
+FUJINET_LOG=${FUJINET_LOG:-"$SCRIPT_DIR/build/fujinet-nio.log"}
 PKILL_ENABLED=${PKILL_ENABLED:-true}
 FDA=${FDA:-}
 BOOT=${BOOT:-c}
@@ -38,6 +40,9 @@ Options:
   -p, --port <port>       FujiNet TCP serial port (env: FUJINET_PORT, default: 65504)
   -N, --nio-bin <path>    fujinet-nio binary (env: FUJINET_NIO_BIN)
   -D, --nio-disk <path>   Raw FAT disk exposed by NIO (env: NIO_DISK)
+      --display <backend> QEMU display backend, e.g. curses (env: QEMU_DISPLAY)
+      --nio-log <path>    fujinet-nio log file for curses display mode
+                           (env: FUJINET_LOG, default: build/fujinet-nio.log)
   -s, --serial-dev <path> Host serial device for --transport serial (env: FUJINET_SERIAL, default: /dev/ttyUSB0)
   -n, --no-pkill          Skip killing existing fujinet-nio processes
       --dry-run           Print the QEMU command without starting QEMU or fujinet-nio
@@ -63,6 +68,12 @@ while [[ $# -gt 0 ]]; do
             FUJINET_NIO_BIN=$2; shift 2 ;;
         -D|--nio-disk)
             NIO_DISK=$2; shift 2 ;;
+        --display)
+            QEMU_DISPLAY=$2; shift 2 ;;
+        --display=*)
+            QEMU_DISPLAY="${1#--display=}"; shift ;;
+        --nio-log)
+            FUJINET_LOG=$2; shift 2 ;;
         -s|--serial-dev)
             FUJINET_SERIAL=$2; shift 2 ;;
         -n|--no-pkill)
@@ -162,7 +173,13 @@ EOF
         fi
 
         echo "Starting fujinet-nio..."
-        (cd "$SCRIPT_DIR" && "$FUJINET_NIO_BIN") &
+        if [[ "$QEMU_DISPLAY" == "curses" ]]; then
+            mkdir -p "$(dirname "$FUJINET_LOG")"
+            echo "fujinet-nio log: $FUJINET_LOG"
+            (cd "$SCRIPT_DIR" && "$FUJINET_NIO_BIN") >"$FUJINET_LOG" 2>&1 &
+        else
+            (cd "$SCRIPT_DIR" && "$FUJINET_NIO_BIN") &
+        fi
         FUJINET_PID=$!
         trap 'if [[ -n "$FUJINET_PID" ]]; then kill "$FUJINET_PID" 2>/dev/null || true; fi' EXIT
 
@@ -188,6 +205,7 @@ QEMU_ARGS=(-hda "$HDA" -m "$MEMORY" -L .
     -boot "$BOOT")
 
 [[ -n "$FDA" ]] && QEMU_ARGS+=(-fda "$FDA")
+[[ -n "$QEMU_DISPLAY" ]] && QEMU_ARGS+=(-display "$QEMU_DISPLAY")
 
 if [[ "$DRY_RUN" == "true" ]]; then
     printf 'QEMU command:'
