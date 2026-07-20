@@ -14,7 +14,8 @@ from pathlib import Path
 import yaml
 
 FAT83_RE = re.compile(r"^[A-Z0-9]{1,8}\.[A-Z0-9]{1,3}$")
-REQUIRED_TOOLS = ("qemu-img", "fdisk", "mcopy", "mdir")
+FAT_DIR_RE = re.compile(r"^[A-Z0-9]{1,8}$")
+REQUIRED_TOOLS = ("qemu-img", "fdisk", "mcopy", "mdir", "mmd", "mdeltree")
 
 
 @dataclass(frozen=True)
@@ -48,6 +49,13 @@ def validate_fat83(name: str) -> str:
         raise ValueError(
             f"FAT 8.3 name required (e.g. BWCN.EXE), got: {name!r}"
         )
+    return upper
+
+
+def validate_fat_dir(name: str) -> str:
+    upper = name.strip().strip("\\/").upper()
+    if not FAT_DIR_RE.match(upper):
+        raise ValueError(f"FAT directory name required (e.g. FNAPPS), got: {name!r}")
     return upper
 
 
@@ -121,6 +129,22 @@ def mcopy(raw_image: Path, offset: int, src: Path, dest_name: str) -> None:
     run_checked(["mcopy", "-o", "-i", image_spec, str(src), f"::{dest_name}"])
 
 
+def mmd(raw_image: Path, offset: int, name: str) -> None:
+    image_spec = f"{raw_image}@@{offset}"
+    subprocess.run(["mmd", "-i", image_spec, f"::{name}"], check=False)
+
+
+def mdeltree(raw_image: Path, offset: int, name: str) -> None:
+    image_spec = f"{raw_image}@@{offset}"
+    subprocess.run(
+        ["mdeltree", "-i", image_spec, f"::{name}"],
+        check=False,
+        text=True,
+        input="y\n",
+        capture_output=True,
+    )
+
+
 def mdir(raw_image: Path, offset: int, names: list[str]) -> None:
     image_spec = f"{raw_image}@@{offset}"
     args = ["mdir", "-i", image_spec]
@@ -140,6 +164,25 @@ def read_dos_file(raw_image: Path, offset: int, name: str) -> str:
         if result.returncode != 0:
             return ""
         return dest.read_text(encoding="ascii", errors="ignore")
+
+
+def write_dos_file(raw_image: Path, offset: int, name: str, contents: str) -> None:
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="ascii",
+        newline="",
+        suffix=".dos",
+        prefix="fujinet-msdos-write.",
+        delete=False,
+    ) as handle:
+        path = Path(handle.name)
+        handle.write(contents)
+
+    try:
+        mcopy(raw_image, offset, path, name)
+        mdir(raw_image, offset, [name])
+    finally:
+        path.unlink(missing_ok=True)
 
 
 def inject_driver(raw_image: Path, offset: int, driver: Path) -> None:
@@ -195,29 +238,106 @@ def inject_config(raw_image: Path, offset: int, config: DriverConfig) -> None:
     lines.append(driver_config_line(config))
 
     contents = "\r\n".join(lines) + "\r\n"
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding="ascii",
-        newline="",
-        suffix=".sys",
-        prefix="fujinet-msdos-config.",
-        delete=False,
-    ) as handle:
-        config_path = Path(handle.name)
-        handle.write(contents)
+    print(f"Injecting CONFIG.SYS: {driver_config_line(config)}", flush=True)
+    write_dos_file(raw_image, offset, "CONFIG.SYS", contents)
 
-    try:
-        print(f"Injecting CONFIG.SYS: {driver_config_line(config)}", flush=True)
-        mcopy(raw_image, offset, config_path, "CONFIG.SYS")
-        mdir(raw_image, offset, ["CONFIG.SYS"])
-    finally:
-        config_path.unlink(missing_ok=True)
+
+def split_path_entries(value: str) -> list[str]:
+    return [entry.strip() for entry in value.split(";") if entry.strip()]
+
+
+def normalise_dos_path(value: str) -> str:
+    return value.replace("/", "\\").rstrip("\\").upper()
+
+
+def path_line_parts(line: str) -> tuple[str, str] | None:
+    stripped = line.lstrip()
+    indent = line[: len(line) - len(stripped)]
+    upper = stripped.upper()
+    if upper.startswith("SET PATH="):
+        return indent + stripped[:9], stripped[9:].strip()
+    if upper.startswith("PATH="):
+        return indent + stripped[:5], stripped[5:].strip()
+    if upper.startswith("PATH "):
+        return indent + stripped[:5], stripped[5:].strip()
+    return None
+
+
+def append_path_entry(
+    existing_value: str,
+    entry: str,
+    remove_entries: list[str],
+) -> str:
+    wanted = normalise_dos_path(entry)
+    removals = {normalise_dos_path(item) for item in remove_entries}
+    entries: list[str] = []
+
+    for item in split_path_entries(existing_value):
+        normalised = normalise_dos_path(item)
+        if normalised in removals:
+            continue
+        if normalised == wanted:
+            continue
+        entries.append(item)
+
+    entries.append(entry)
+    return ";".join(entries)
+
+
+def inject_autoexec_path(
+    raw_image: Path,
+    offset: int,
+    apps_dir: str,
+    legacy_dirs: list[str],
+) -> None:
+    existing = read_dos_file(raw_image, offset, "AUTOEXEC.BAT")
+    lines: list[str] = []
+    path_seen = False
+    apps_path = f"C:\\{apps_dir}"
+    legacy_paths = [f"C:\\{name}" for name in legacy_dirs]
+
+    for raw_line in existing.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        line = raw_line.rstrip()
+        if not line:
+            continue
+
+        parts = path_line_parts(line)
+        if parts is None:
+            lines.append(line)
+            continue
+
+        prefix, value = parts
+        value = append_path_entry(value, apps_path, legacy_paths)
+        lines.append(f"{prefix}{value}")
+        path_seen = True
+
+    if not path_seen:
+        lines.append(f"PATH C:\\DOS;{apps_path}")
+
+    contents = "\r\n".join(lines) + "\r\n"
+    print(f"Injecting AUTOEXEC.BAT PATH entry: {apps_path}", flush=True)
+    write_dos_file(raw_image, offset, "AUTOEXEC.BAT", contents)
+
+
+def remove_legacy_dirs(
+    raw_image: Path,
+    offset: int,
+    apps_dir: str,
+    legacy_dirs: list[str],
+) -> None:
+    for name in legacy_dirs:
+        fat_name = validate_fat_dir(name)
+        if fat_name == apps_dir:
+            continue
+        print(f"Removing legacy app directory C:\\{fat_name} if present...", flush=True)
+        mdeltree(raw_image, offset, fat_name)
 
 
 def inject_apps(
     raw_image: Path,
     offset: int,
     apps: list[AppEntry],
+    apps_dir: str,
 ) -> list[str]:
     injected: list[str] = []
     skipped: list[str] = []
@@ -240,14 +360,17 @@ def inject_apps(
         return []
 
     print("Injecting applications...", flush=True)
+    mmd(raw_image, offset, apps_dir)
     for app in apps:
         if not app.src.is_file():
             continue
-        print(f"  {app.src} -> C:\\{app.name}", flush=True)
-        mcopy(raw_image, offset, app.src, app.name)
+        dest = f"/{apps_dir}/{app.name}"
+        print(f"  {app.src} -> C:\\{apps_dir}\\{app.name}", flush=True)
+        mcopy(raw_image, offset, app.src, dest)
 
-    mdir(raw_image, offset, injected)
-    return injected
+    injected_paths = [f"/{apps_dir}/{name}" for name in injected]
+    mdir(raw_image, offset, [apps_dir, *injected_paths])
+    return injected_paths
 
 
 def build_qcow2(
@@ -258,6 +381,8 @@ def build_qcow2(
     driver: Path,
     apps_manifest: Path | None,
     driver_config: DriverConfig,
+    apps_dir: str = "FNAPPS",
+    legacy_app_dirs: list[str] | None = None,
 ) -> None:
     require_tools()
 
@@ -270,6 +395,10 @@ def build_qcow2(
         )
 
     apps: list[AppEntry] = []
+    apps_dir = validate_fat_dir(apps_dir)
+    legacy_app_dirs = legacy_app_dirs or ["FN"]
+    legacy_app_dirs = [validate_fat_dir(name) for name in legacy_app_dirs]
+
     if apps_manifest is not None:
         if not apps_manifest.is_file():
             raise FileNotFoundError(f"Apps manifest not found: {apps_manifest}")
@@ -289,11 +418,13 @@ def build_qcow2(
         run_checked(["qemu-img", "convert", "-O", "raw", str(base_image), str(raw_image)])
 
         offset = partition_start_sector(raw_image) * 512
+        remove_legacy_dirs(raw_image, offset, apps_dir, legacy_app_dirs)
         inject_driver(raw_image, offset, driver)
         inject_config(raw_image, offset, driver_config)
 
         if apps:
-            inject_apps(raw_image, offset, apps)
+            inject_autoexec_path(raw_image, offset, apps_dir, legacy_app_dirs)
+            inject_apps(raw_image, offset, apps, apps_dir)
 
         print(f"Writing qcow2 image: {output_image}", flush=True)
         if output_image.exists():

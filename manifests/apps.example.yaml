@@ -3,16 +3,23 @@
 # Paths support shell-style environment expansion (${VAR}) and ~.
 # Relative paths are resolved from the fujinet-qemu-msdos repository root.
 #
-# Each entry copies a host file onto C:\ using the given FAT 8.3 name.
+# Each entry copies a host file into C:\FNAPPS using the given FAT 8.3 name.
 # Optional apps (required: false) are skipped when the source file is missing.
 
 apps:
-  - src: ${NIO_APPS_MSDOS_BIN}/nioprobe.exe
-    name: NIOPROBE.EXE
-    required: false
-  - src: ${NIO_APPS_MSDOS_BIN}/nioread.exe
-    name: NIOREAD.EXE
-    required: false
-  - src: ${BOUNCE_WORLD}/build/bwcn.msdos.exe
-    name: BWCN.EXE
-    required: false
+  - src: ${NIO_APPS_MSDOS_BIN}/fdrive.exe
+    name: FDRIVE.EXE
+  - src: ${NIO_APPS_MSDOS_BIN}/fhost.exe
+    name: FHOST.EXE
+  - src: ${NIO_APPS_MSDOS_BIN}/fin.exe
+    name: FIN.EXE
+  - src: ${NIO_APPS_MSDOS_BIN}/fout.exe
+    name: FOUT.EXE
+  - src: ${NIO_APPS_MSDOS_BIN}/fls.exe
+    name: FLS.EXE
+  - src: ${NIO_APPS_MSDOS_BIN}/fmount.exe
+    name: FMOUNT.EXE
+  - src: ${NIO_APPS_MSDOS_BIN}/fapp.exe
+    name: FAPP.EXE
+  - src: ${NIO_APPS_MSDOS_BIN}/config-nio.exe
+    name: CONFNIO.EXE

@@ -18,6 +18,9 @@ Options:
   -m, --msdos-dir <path>       fujinet-msdos repository (env: FUJINET_MSDOS)
   -d, --driver <path>          FUJINET.SYS to inject (env: DRIVER)
       --apps-manifest <file>   YAML app manifest (env: APPS_MANIFEST)
+      --apps-dir <dir>         DOS directory for apps (env: APPS_DIR, default: FNAPPS)
+      --legacy-app-dir <dir>   Legacy DOS app directory to remove; repeatable
+                               (env: LEGACY_APP_DIRS, default: FN)
       --fuji-bps <bps>         CONFIG.SYS FUJI_BPS value (env: FUJI_BPS, default: 115200)
       --fuji-port <port>       CONFIG.SYS FUJI_PORT value (env: FUJI_PORT)
   -h, --help                   Show this help message

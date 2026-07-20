@@ -43,7 +43,8 @@ Run the same image against a real serial FujiNet device instead of POSIX
 The detailed NIO guide is in [docs/nio-workflow.md](docs/nio-workflow.md).
 It covers prerequisites, building `fujinet-nio`, building `FUJINET.SYS`,
 creating `manifests/apps.yaml`, creating raw FAT disk images, and the DOS
-`FHOST` / `FIN` / `FMOUNT` workflow.
+`FHOST` / `FIN` / `FMOUNT` workflow. Generated app images place utilities in
+`C:\FNAPPS` and add that directory to `PATH`.
 
 ## Repository Contents
 
@@ -53,7 +54,8 @@ creating `manifests/apps.yaml`, creating raw FAT disk images, and the DOS
   FujiNet disk mounting.
 - `run-qemu-nio`: starts QEMU with FujiBus over TCP serial or a real host
   serial device. It can also use QEMU's curses display for terminal-based UI
-  development.
+  development, and can copy a boot/config disk into `fujinet-data` for POSIX
+  `fujinet-nio`.
 - `scripts/create_msdos_img.py`: creates raw FAT12/FAT16 images for mounting
   through FujiNet.
 - `manifests/apps.example.yaml`: example app injection manifest.

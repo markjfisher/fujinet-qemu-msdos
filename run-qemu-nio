@@ -12,12 +12,17 @@ FUJINET_NIO_BIN=${FUJINET_NIO_BIN:-"$FUJINET_NIO_PATH/build/fujibus-tcp-debug/fu
 FUJINET_TRANSPORT=${FUJINET_TRANSPORT:-tcp}
 FUJINET_SERIAL=${FUJINET_SERIAL:-/dev/ttyUSB0}
 QEMU_DISPLAY=${QEMU_DISPLAY:-}
+QEMU_MONITOR=${QEMU_MONITOR:-"$SCRIPT_DIR/build/qemu-nio-monitor.sock"}
+QEMU_MONITOR_ENABLED=${QEMU_MONITOR_ENABLED:-true}
 FUJINET_LOG=${FUJINET_LOG:-"$SCRIPT_DIR/build/fujinet-nio.log"}
 PKILL_ENABLED=${PKILL_ENABLED:-true}
 FDA=${FDA:-}
 BOOT=${BOOT:-c}
 NIO_DISK_MB=${NIO_DISK_MB:-32}
-NIO_DISK=${NIO_DISK:-"$SCRIPT_DIR/fujinet-data/dos/fn-dos.img"}
+NIO_SCRATCH_DISK=${NIO_SCRATCH_DISK:-}
+NIO_SCRATCH_SLOT=${NIO_SCRATCH_SLOT:-2}
+NIO_BOOT_DISK=${NIO_BOOT_DISK:-}
+NIO_BOOT_URI=${NIO_BOOT_URI:-host:/boot/msdos/autorun.img}
 FUJINET_PID=
 DRY_RUN=${DRY_RUN:-false}
 
@@ -39,8 +44,22 @@ Options:
   -t, --transport <mode>  tcp or serial (env: FUJINET_TRANSPORT, default: tcp)
   -p, --port <port>       FujiNet TCP serial port (env: FUJINET_PORT, default: 65504)
   -N, --nio-bin <path>    fujinet-nio binary (env: FUJINET_NIO_BIN)
-  -D, --nio-disk <path>   Raw FAT disk exposed by NIO (env: NIO_DISK)
+  -D, --nio-disk <path>   Compatibility alias for --nio-scratch-disk
+      --nio-scratch-disk <path>
+                          Optional writable raw FAT scratch disk exposed by NIO
+                          (env: NIO_SCRATCH_DISK, default: none)
+      --nio-scratch-slot <1-8>
+                          Config mount slot for scratch disk
+                          (env: NIO_SCRATCH_SLOT, default: 2)
+      --nio-boot-disk <path>
+                          Boot/config disk image copied into fujinet-data
+                          (env: NIO_BOOT_DISK)
+      --nio-boot-uri <uri> Boot/config URI for fujinet-nio
+                          (env: NIO_BOOT_URI, default: host:/boot/msdos/autorun.img)
       --display <backend> QEMU display backend, e.g. curses (env: QEMU_DISPLAY)
+      --monitor <path>    QEMU monitor UNIX socket path
+                          (env: QEMU_MONITOR, default: build/qemu-nio-monitor.sock)
+      --no-monitor        Disable QEMU monitor socket
       --nio-log <path>    fujinet-nio log file for curses display mode
                            (env: FUJINET_LOG, default: build/fujinet-nio.log)
   -s, --serial-dev <path> Host serial device for --transport serial (env: FUJINET_SERIAL, default: /dev/ttyUSB0)
@@ -66,12 +85,22 @@ while [[ $# -gt 0 ]]; do
             FUJINET_PORT=$2; shift 2 ;;
         -N|--nio-bin)
             FUJINET_NIO_BIN=$2; shift 2 ;;
-        -D|--nio-disk)
-            NIO_DISK=$2; shift 2 ;;
+        -D|--nio-disk|--nio-scratch-disk)
+            NIO_SCRATCH_DISK=$2; shift 2 ;;
+        --nio-scratch-slot)
+            NIO_SCRATCH_SLOT=$2; shift 2 ;;
+        --nio-boot-disk)
+            NIO_BOOT_DISK=$2; shift 2 ;;
+        --nio-boot-uri)
+            NIO_BOOT_URI=$2; shift 2 ;;
         --display)
             QEMU_DISPLAY=$2; shift 2 ;;
         --display=*)
             QEMU_DISPLAY="${1#--display=}"; shift ;;
+        --monitor)
+            QEMU_MONITOR=$2; shift 2 ;;
+        --no-monitor)
+            QEMU_MONITOR_ENABLED=false; shift ;;
         --nio-log)
             FUJINET_LOG=$2; shift 2 ;;
         -s|--serial-dev)
@@ -131,37 +160,75 @@ fi
 
 HOST_ROOT="$SCRIPT_DIR/fujinet-data"
 HOST_DOS_DIR="$HOST_ROOT/dos"
+HOST_BOOT_DISK="$HOST_ROOT/boot/msdos/autorun.img"
 
 if [[ "$FUJINET_TRANSPORT" == "tcp" ]]; then
-    NIO_DISK_DIR=$(dirname "$NIO_DISK")
-    NIO_DISK_BASE=$(basename "$NIO_DISK")
-    mkdir -p "$NIO_DISK_DIR"
-    NIO_DISK_DIR_ABS=$(cd "$NIO_DISK_DIR" && pwd)
-    NIO_DISK_ABS="$NIO_DISK_DIR_ABS/$NIO_DISK_BASE"
-
-    case "$NIO_DISK_ABS" in
-        "$HOST_ROOT"/*) ;;
-        *)
-            echo "NIO disk must live under $HOST_ROOT so fujinet-nio can expose it as host: URI" >&2
-            echo "Requested: $NIO_DISK_ABS" >&2
-            exit 1 ;;
-    esac
-
-    NIO_DISK_URI_PATH="/${NIO_DISK_ABS#"$HOST_ROOT/"}"
-
-    if [[ ! -f "$NIO_DISK_ABS" ]]; then
-        echo "Creating NIO raw FAT disk: $NIO_DISK_ABS (${NIO_DISK_MB} MiB)"
-        dd if=/dev/zero of="$NIO_DISK_ABS" bs=1M count="$NIO_DISK_MB" status=none
-        mkfs.fat -F 16 -n FNDOS "$NIO_DISK_ABS" >/dev/null
+    BOOT_CONFIG_YAML=""
+    if [[ -n "$NIO_BOOT_DISK" ]]; then
+        if [[ ! -f "$NIO_BOOT_DISK" ]]; then
+            echo "Boot disk image not found: $NIO_BOOT_DISK" >&2
+            exit 1
+        fi
+        mkdir -p "$(dirname "$HOST_BOOT_DISK")"
+        cp "$NIO_BOOT_DISK" "$HOST_BOOT_DISK"
+        echo "Using NIO boot disk: $NIO_BOOT_DISK -> $HOST_BOOT_DISK"
+    elif [[ -f "$HOST_BOOT_DISK" ]]; then
+        echo "Using NIO boot disk: $HOST_BOOT_DISK"
     fi
 
-    cat > "$HOST_ROOT/fujinet.yaml" <<EOF
+    if [[ -f "$HOST_BOOT_DISK" ]]; then
+        BOOT_CONFIG_YAML=$(cat <<EOF
+boot:
+  mode: config
+  config_uri: "$NIO_BOOT_URI"
+  readonly: true
+EOF
+)
+    fi
+
+    MOUNTS_CONFIG_YAML=""
+    if [[ -n "$NIO_SCRATCH_DISK" ]]; then
+        if ! [[ "$NIO_SCRATCH_SLOT" =~ ^[1-8]$ ]]; then
+            echo "Invalid NIO scratch slot: $NIO_SCRATCH_SLOT (expected 1-8)" >&2
+            exit 1
+        fi
+
+        NIO_DISK_DIR=$(dirname "$NIO_SCRATCH_DISK")
+        NIO_DISK_BASE=$(basename "$NIO_SCRATCH_DISK")
+        mkdir -p "$NIO_DISK_DIR"
+        NIO_DISK_DIR_ABS=$(cd "$NIO_DISK_DIR" && pwd)
+        NIO_DISK_ABS="$NIO_DISK_DIR_ABS/$NIO_DISK_BASE"
+
+        case "$NIO_DISK_ABS" in
+            "$HOST_ROOT"/*) ;;
+            *)
+                echo "NIO scratch disk must live under $HOST_ROOT so fujinet-nio can expose it as host: URI" >&2
+                echo "Requested: $NIO_DISK_ABS" >&2
+                exit 1 ;;
+        esac
+
+        NIO_DISK_URI_PATH="/${NIO_DISK_ABS#"$HOST_ROOT/"}"
+
+        if [[ ! -f "$NIO_DISK_ABS" ]]; then
+            echo "Creating NIO scratch raw FAT disk: $NIO_DISK_ABS (${NIO_DISK_MB} MiB)"
+            dd if=/dev/zero of="$NIO_DISK_ABS" bs=1M count="$NIO_DISK_MB" status=none
+            mkfs.fat -F 16 -n FNDOS "$NIO_DISK_ABS" >/dev/null
+        fi
+
+        MOUNTS_CONFIG_YAML=$(cat <<EOF
 mounts:
-  - slot: 1
+  - slot: $NIO_SCRATCH_SLOT
     uri: "host:$NIO_DISK_URI_PATH"
     mode: "rw"
     enabled: true
     sector_size_hint: 512
+EOF
+)
+    fi
+
+    cat > "$HOST_ROOT/fujinet.yaml" <<EOF
+$BOOT_CONFIG_YAML
+$MOUNTS_CONFIG_YAML
 channel:
   tcp_host: "$FUJINET_HOST"
   tcp_port: $FUJINET_PORT
@@ -206,6 +273,13 @@ QEMU_ARGS=(-hda "$HDA" -m "$MEMORY" -L .
 
 [[ -n "$FDA" ]] && QEMU_ARGS+=(-fda "$FDA")
 [[ -n "$QEMU_DISPLAY" ]] && QEMU_ARGS+=(-display "$QEMU_DISPLAY")
+
+if [[ "$QEMU_MONITOR_ENABLED" == "true" ]]; then
+    mkdir -p "$(dirname "$QEMU_MONITOR")"
+    rm -f "$QEMU_MONITOR"
+    QEMU_ARGS+=(-monitor "unix:$QEMU_MONITOR,server,nowait")
+    echo "QEMU monitor: $QEMU_MONITOR"
+fi
 
 if [[ "$DRY_RUN" == "true" ]]; then
     printf 'QEMU command:'

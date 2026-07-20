@@ -17,7 +17,6 @@ paths supplied with environment variables:
 - `fujinet-nio`
 - `fujinet-msdos`
 - `nio-apps` if you want to build the sample MS-DOS command applications
-- optionally `bounce-world-client-nio`
 
 You will need Open Watcom in your shell
 
@@ -44,18 +43,10 @@ cd /path/to/nio-apps
 make -C msdos clean all
 ```
 
-If you want to include MS-DOS Bouncy World Client for NIO:
-
-```sh
-cd /path/to/bounce-world-client-nio
-export FUJINET_NIO_LIB=/path/to/fujinet-nio-lib
-make clean && make
-```
-
 ## App Manifest
 
-`build-nio-qcow` can inject applications onto `C:\` using a YAML manifest.
-Copy the example first:
+`build-nio-qcow` can inject applications into `C:\FNAPPS` using a YAML
+manifest. Copy the example first:
 
 ```sh
 cd /path/tofujinet-qemu-msdos
@@ -66,29 +57,27 @@ Manifest entries map host files to MS-DOS 8.3 filenames:
 
 ```yaml
 apps:
-  - src: ${NIO_APPS_MSDOS}/bin/fhost.exe
+  - src: ${NIO_APPS_MSDOS_BIN}/fhost.exe
     name: FHOST.EXE
-  - src: ${NIO_APPS_MSDOS}/bin/fmount.exe
+  - src: ${NIO_APPS_MSDOS_BIN}/fmount.exe
     name: FMOUNT.EXE
-  - src: ${BOUNCE_WORLD_CLIENT_NIO}/build/bwcn.msdos.exe
-    name: BWCN.EXE
-    required: false
+  - src: ${NIO_APPS_MSDOS_BIN}/config-nio.exe
+    name: CONFNIO.EXE
 ```
 
 Fields:
 
 - `src`: host path to copy. Supports environment variables such as
   `${NIO_APPS_MSDOS}` and `~`.
-- `name`: destination filename on `C:\`. Use an MS-DOS 8.3 name.
+- `name`: destination filename under `C:\FNAPPS`. Use an MS-DOS 8.3 name.
 - `required`: optional. Defaults to `true`; set `false` to skip missing files.
 
 Typical environment:
 
 ```sh
 export FUJINET_MSDOS=/path/to/fujinet-msdos
-export NIO_APPS_MSDOS=/path/to/nio-apps/msdos
+export NIO_APPS_MSDOS_BIN=/path/to/nio-apps/build/msdos/bin
 export FUJINET_NIO_LIB=/path/to/fujinet-nio-lib
-export BOUNCE_WORLD_CLIENT_NIO=/path/to/bounce-world-client-nio
 ```
 
 ## Build The QEMU Image
@@ -117,9 +106,11 @@ This writes:
 build/msdos-nio-apps.qcow2
 ```
 
-`build-nio-qcow` clones the base `msdos.qcow2`, injects
-`FUJINET.SYS`, then optionally copies manifest applications into the DOS
-filesystem. Generated images under `build/` are not committed.
+`build-nio-qcow` clones the base `msdos.qcow2`, removes the legacy `C:\FN`
+directory from the generated image, injects `FUJINET.SYS`, updates
+`AUTOEXEC.BAT` so `C:\FNAPPS` is on `PATH`, then optionally copies manifest
+applications into `C:\FNAPPS`. Generated images under `build/` are not
+committed.
 
 Build a raw FAT image from the same applications manifest for TNFS/FujiNet disk
 mounting:
@@ -144,6 +135,12 @@ Equivalent explicit flags are available:
 
 ```sh
 ./build-nio-qcow --fuji-bps 9600 --apps-manifest manifests/apps.yaml
+```
+
+The app directory defaults to `FNAPPS`:
+
+```sh
+./build-nio-qcow --apps-manifest manifests/apps.yaml --apps-dir FNAPPS
 ```
 
 Useful build-time driver options:
@@ -178,6 +175,26 @@ In curses display mode, QEMU needs to own the terminal. Do not pipe it through
 `tee` or another command that removes the real TTY. The workspace
 `msdos-dev-curses` target handles this correctly.
 
+`run-qemu-nio` also creates a QEMU monitor socket by default:
+
+```text
+build/qemu-nio-monitor.sock
+```
+
+Use `qemu-nio-monitor` from another terminal or from automation to drive QEMU
+through the monitor instead of trying to type into the curses display terminal:
+
+```sh
+./qemu-nio-monitor type CONFNIO ret
+./qemu-nio-monitor sendkey q
+./qemu-nio-monitor sendkey left ret
+```
+
+This is the preferred path for scripted TUI testing. It works with curses,
+graphical, and headless display modes because `sendkey` is delivered through
+QEMU itself. To disable the monitor socket, pass `--no-monitor`; to move it,
+pass `--monitor path/to/socket`.
+
 The most common full sequence is:
 
 ```sh
@@ -205,14 +222,41 @@ Useful `run-qemu-nio` options:
 | `-t`, `--transport` | `FUJINET_TRANSPORT` | `tcp` | `tcp` for POSIX `fujinet-nio`, `serial` for a host serial device |
 | `-p`, `--port` | `FUJINET_PORT` | `65504` | FujiNet TCP serial port |
 | `-N`, `--nio-bin` | `FUJINET_NIO_BIN` | `../fujinet-nio/build/fujibus-tcp-debug/fujinet-nio` | `fujinet-nio` binary |
-| `-D`, `--nio-disk` | `NIO_DISK` | `fujinet-data/dos/fn-dos.img` | Default raw FAT image exposed as `host:/dos/fn-dos.img` |
+| `-D`, `--nio-disk` | `NIO_SCRATCH_DISK` | none | Compatibility alias for `--nio-scratch-disk` |
+| `--nio-scratch-disk` | `NIO_SCRATCH_DISK` | none | Optional writable raw FAT scratch image exposed through a config mount |
+| `--nio-scratch-slot` | `NIO_SCRATCH_SLOT` | `2` | User-facing config mount slot for the scratch disk, 1-8 |
+| `--nio-boot-disk` | `NIO_BOOT_DISK` | none | Boot/config disk copied to `fujinet-data/boot/msdos/autorun.img` |
+| `--nio-boot-uri` | `NIO_BOOT_URI` | `host:/boot/msdos/autorun.img` | Boot/config URI written to `fujinet.yaml` |
 | `--display` | `QEMU_DISPLAY` | none | QEMU display backend, e.g. `curses` |
+| `--monitor` | `QEMU_MONITOR` | `build/qemu-nio-monitor.sock` | QEMU monitor UNIX socket used by `qemu-nio-monitor` |
+| `--no-monitor` | `QEMU_MONITOR_ENABLED=false` | monitor enabled | Disable the monitor socket |
 | `-s`, `--serial-dev` | `FUJINET_SERIAL` | `/dev/ttyUSB0` | Host serial character device for `--transport serial` |
 | `-n`, `--no-pkill` | `PKILL_ENABLED=false` | pkill enabled | Do not kill existing `fujinet-nio` processes |
 | `--dry-run` | `DRY_RUN=true` | disabled | Print the QEMU command without starting QEMU or `fujinet-nio` |
 
-In TCP mode, `run-qemu-nio` writes `fujinet-data/fujinet.yaml` on startup. By
-default slot 0 is configured as a pending mount for:
+In TCP mode, `run-qemu-nio` writes `fujinet-data/fujinet.yaml` on startup. The
+script is standalone: it does not know about workspace repo paths. When
+`--nio-boot-disk` is provided, it copies that disk to
+`fujinet-data/boot/msdos/autorun.img` and configures `boot.config_uri` as:
+
+```text
+host:/boot/msdos/autorun.img
+```
+
+No writable disk is mounted by default. If a test needs a writable raw FAT disk,
+add it explicitly:
+
+```sh
+./run-qemu-nio --hda build/msdos-nio-apps.qcow2 \
+  --nio-scratch-disk fujinet-data/dos/fn-dos.img
+```
+
+The scratch disk defaults to config `slot: 2`, which maps to runtime slot 1.
+Config mount slots are user-facing 1-8; `fujinet-nio` converts them internally
+to runtime slots 0-7. Slot 1 maps to runtime slot 0, which is reserved for the
+boot/config disk when `boot.mode: config` is active.
+
+That scratch example is exposed as:
 
 ```text
 host:/dos/fn-dos.img
@@ -288,12 +332,11 @@ Inspect drive-to-slot mappings:
 FDRIVE
 ```
 
-Useful tools on `C:\`:
+Useful tools on `C:\FNAPPS`:
 
 - `FHOST.EXE`: show or set the current FujiNet host URI.
 - `FLS.EXE`: list a TNFS/file path through FujiNet.
 - `FIN.EXE`: select an image URI/path for a slot.
 - `FMOUNT.EXE`: mount a slot onto a DOS drive.
 - `FDRIVE.EXE`: show DOS drives, mapped slots, and selected images.
-- `NIOPROBE.EXE`: probe DiskService directly.
-- `NIOREAD.EXE`: read and dump a raw sector directly.
+- `CONFNIO.EXE`: curses configuration UI.

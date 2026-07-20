@@ -1,0 +1,127 @@
+#!/usr/bin/env python3
+"""Send commands to the run-qemu-nio QEMU monitor socket."""
+
+from __future__ import annotations
+
+import argparse
+import socket
+import sys
+import time
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parent
+DEFAULT_MONITOR = ROOT / "build" / "qemu-nio-monitor.sock"
+
+KEY_NAMES = {
+    " ": "spc",
+    "\n": "ret",
+    "\r": "ret",
+    "\t": "tab",
+    ".": "dot",
+    ",": "comma",
+    "-": "minus",
+    "=": "equal",
+    "/": "slash",
+    "\\": "backslash",
+    ";": "semicolon",
+    "'": "apostrophe",
+    "`": "grave_accent",
+    "[": "bracket_left",
+    "]": "bracket_right",
+}
+
+
+def qemu_key(ch: str) -> str:
+    if ch in KEY_NAMES:
+        return KEY_NAMES[ch]
+    if ch.isalpha():
+        return ch.lower()
+    if ch.isdigit():
+        return ch
+    raise ValueError(f"no QEMU key mapping for character: {ch!r}")
+
+
+def monitor(path: Path, command: str, timeout: float) -> str:
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+        sock.settimeout(timeout)
+        sock.connect(str(path))
+        greeting = sock.recv(4096)
+        sock.sendall((command + "\n").encode("ascii"))
+        chunks = [greeting]
+        while True:
+            try:
+                chunk = sock.recv(4096)
+            except socket.timeout:
+                break
+            if not chunk:
+                break
+            chunks.append(chunk)
+            if b"(qemu)" in chunk:
+                break
+        return b"".join(chunks).decode("ascii", errors="replace")
+
+
+def sendkey(path: Path, key: str, timeout: float, delay: float) -> None:
+    monitor(path, f"sendkey {key}", timeout)
+    if delay:
+        time.sleep(delay)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Send commands or keys to run-qemu-nio's QEMU monitor."
+    )
+    parser.add_argument(
+        "-s",
+        "--socket",
+        type=Path,
+        default=DEFAULT_MONITOR,
+        help=f"monitor socket path (default: {DEFAULT_MONITOR})",
+    )
+    parser.add_argument(
+        "--timeout", type=float, default=5.0, help="socket read/connect timeout"
+    )
+    parser.add_argument(
+        "--delay", type=float, default=0.01, help="delay between sent keys"
+    )
+    sub = parser.add_subparsers(dest="command")
+
+    raw = sub.add_parser("cmd", help="send a raw QEMU monitor command")
+    raw.add_argument("monitor_command", nargs="+")
+
+    key = sub.add_parser("sendkey", help="send QEMU key names in sequence")
+    key.add_argument("keys", nargs="+")
+
+    typ = sub.add_parser("type", help="type text, then optional QEMU key names")
+    typ.add_argument("text")
+    typ.add_argument("keys", nargs="*")
+
+    args = parser.parse_args(argv)
+    if not args.socket.exists():
+        print(f"QEMU monitor socket not found: {args.socket}", file=sys.stderr)
+        print("Start QEMU with run-qemu-nio first.", file=sys.stderr)
+        return 1
+
+    try:
+        if args.command == "cmd":
+            print(monitor(args.socket, " ".join(args.monitor_command), args.timeout), end="")
+        elif args.command == "sendkey":
+            for item in args.keys:
+                sendkey(args.socket, item, args.timeout, args.delay)
+        elif args.command == "type":
+            for ch in args.text:
+                sendkey(args.socket, qemu_key(ch), args.timeout, args.delay)
+            for item in args.keys:
+                sendkey(args.socket, item, args.timeout, args.delay)
+        else:
+            parser.print_help()
+            return 2
+    except (OSError, ValueError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

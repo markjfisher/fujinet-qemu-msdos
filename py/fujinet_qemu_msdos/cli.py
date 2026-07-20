@@ -55,6 +55,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="YAML manifest of apps to inject (env: APPS_MANIFEST)",
     )
     parser.add_argument(
+        "--apps-dir",
+        default=os.environ.get("APPS_DIR", "FNAPPS"),
+        help="DOS directory for injected apps (env: APPS_DIR, default: FNAPPS)",
+    )
+    parser.add_argument(
+        "--legacy-app-dir",
+        action="append",
+        default=None,
+        help=(
+            "Legacy DOS app directory to remove from generated image. "
+            "May be repeated (env: LEGACY_APP_DIRS, default: FN)."
+        ),
+    )
+    parser.add_argument(
         "--repo-root",
         default=str(root),
         help="Repository root for resolving relative manifest paths",
@@ -116,6 +130,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     else:
         args.output_image = build_dir / "msdos-nio.qcow2"
 
+    if args.legacy_app_dir is None:
+        legacy = os.environ.get("LEGACY_APP_DIRS", "FN")
+        args.legacy_app_dirs = [item for item in legacy.split(":") if item.strip()]
+    else:
+        args.legacy_app_dirs = args.legacy_app_dir
+
     return args
 
 
@@ -157,6 +177,8 @@ def main(argv: list[str] | None = None) -> int:
                 auto_downshift=args.fuji_auto_downshift.strip(),
                 debug_io=args.fuji_debug_io.strip(),
             ),
+            apps_dir=args.apps_dir,
+            legacy_app_dirs=args.legacy_app_dirs,
         )
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
         print(exc, file=sys.stderr)
