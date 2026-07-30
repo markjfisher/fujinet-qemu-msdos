@@ -49,7 +49,7 @@ Options:
                           Optional writable raw FAT scratch disk exposed by NIO
                           (env: NIO_SCRATCH_DISK, default: none)
       --nio-scratch-slot <1-8>
-                          Config mount slot for scratch disk
+                          Active drive slot for scratch disk
                           (env: NIO_SCRATCH_SLOT, default: 2)
       --nio-boot-disk <path>
                           Boot/config disk image copied into fujinet-data
@@ -186,7 +186,6 @@ EOF
 )
     fi
 
-    MOUNTS_CONFIG_YAML=""
     if [[ -n "$NIO_SCRATCH_DISK" ]]; then
         if ! [[ "$NIO_SCRATCH_SLOT" =~ ^[1-8]$ ]]; then
             echo "Invalid NIO scratch slot: $NIO_SCRATCH_SLOT (expected 1-8)" >&2
@@ -215,20 +214,29 @@ EOF
             mkfs.fat -F 16 -n FNDOS "$NIO_DISK_ABS" >/dev/null
         fi
 
-        MOUNTS_CONFIG_YAML=$(cat <<EOF
-mounts:
-  - slot: $NIO_SCRATCH_SLOT
-    uri: "host:$NIO_DISK_URI_PATH"
-    mode: "rw"
-    enabled: true
-    sector_size_hint: 512
-EOF
-)
+        # DiskDevice owns live drive mappings. Seed the same persistent runtime
+        # state that a successful Disk Mount command writes, preserving other
+        # drive entries while replacing the requested scratch drive.
+        RUNTIME_MOUNTS_FILE="$HOST_ROOT/fujinet-runtime-mounts.tsv"
+        RUNTIME_SLOT=$((NIO_SCRATCH_SLOT - 1))
+        mkdir -p "$HOST_ROOT"
+        RUNTIME_MOUNTS_TMP=$(mktemp "$HOST_ROOT/.fujinet-runtime-mounts.XXXXXX")
+        if [[ -f "$RUNTIME_MOUNTS_FILE" ]] \
+            && [[ "$(head -n 1 "$RUNTIME_MOUNTS_FILE")" == "v1" ]]; then
+            awk -F '\t' -v slot="$RUNTIME_SLOT" \
+                'NR == 1 || $1 != slot { print }' \
+                "$RUNTIME_MOUNTS_FILE" > "$RUNTIME_MOUNTS_TMP"
+        else
+            printf 'v1\n' > "$RUNTIME_MOUNTS_TMP"
+        fi
+        printf '%s\t512\trw\thost:%s\n' \
+            "$RUNTIME_SLOT" "$NIO_DISK_URI_PATH" >> "$RUNTIME_MOUNTS_TMP"
+        mv "$RUNTIME_MOUNTS_TMP" "$RUNTIME_MOUNTS_FILE"
+        echo "Using NIO scratch disk in drive $NIO_SCRATCH_SLOT: host:$NIO_DISK_URI_PATH"
     fi
 
     cat > "$HOST_ROOT/fujinet.yaml" <<EOF
 $BOOT_CONFIG_YAML
-$MOUNTS_CONFIG_YAML
 channel:
   tcp_host: "$FUJINET_HOST"
   tcp_port: $FUJINET_PORT

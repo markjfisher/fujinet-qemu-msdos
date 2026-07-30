@@ -223,8 +223,8 @@ Useful `run-qemu-nio` options:
 | `-p`, `--port` | `FUJINET_PORT` | `65504` | FujiNet TCP serial port |
 | `-N`, `--nio-bin` | `FUJINET_NIO_BIN` | `../fujinet-nio/build/fujibus-tcp-debug/fujinet-nio` | `fujinet-nio` binary |
 | `-D`, `--nio-disk` | `NIO_SCRATCH_DISK` | none | Compatibility alias for `--nio-scratch-disk` |
-| `--nio-scratch-disk` | `NIO_SCRATCH_DISK` | none | Optional writable raw FAT scratch image exposed through a config mount |
-| `--nio-scratch-slot` | `NIO_SCRATCH_SLOT` | `2` | User-facing config mount slot for the scratch disk, 1-8 |
+| `--nio-scratch-disk` | `NIO_SCRATCH_DISK` | none | Optional writable raw FAT scratch image restored as an active drive mapping |
+| `--nio-scratch-slot` | `NIO_SCRATCH_SLOT` | `2` | User-facing active drive slot for the scratch disk, 1-8 |
 | `--nio-boot-disk` | `NIO_BOOT_DISK` | none | Boot/config disk copied to `fujinet-data/boot/msdos/autorun.img` |
 | `--nio-boot-uri` | `NIO_BOOT_URI` | `host:/boot/msdos/autorun.img` | Boot/config URI written to `fujinet.yaml` |
 | `--display` | `QEMU_DISPLAY` | none | QEMU display backend, e.g. `curses` |
@@ -251,10 +251,12 @@ add it explicitly:
   --nio-scratch-disk fujinet-data/dos/fn-dos.img
 ```
 
-The scratch disk defaults to config `slot: 2`, which maps to runtime slot 1.
-Config mount slots are user-facing 1-8; `fujinet-nio` converts them internally
-to runtime slots 0-7. Slot 1 maps to runtime slot 0, which is reserved for the
-boot/config disk when `boot.mode: config` is active.
+The scratch disk defaults to user-facing drive 2, which maps to runtime slot 1.
+`run-qemu-nio` records it in `fujinet-data/fujinet-runtime-mounts.tsv`, the
+persistent state owned by the Disk device, while preserving mappings for other
+drives. User-facing drives are 1-8; runtime slots are 0-7. Drive 1 maps to
+runtime slot 0, which is reserved for the boot/config disk when
+`boot.mode: config` is active.
 
 That scratch example is exposed as:
 
