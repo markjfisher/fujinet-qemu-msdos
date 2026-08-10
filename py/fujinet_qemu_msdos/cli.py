@@ -14,8 +14,8 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-def default_driver(fujinet_msdos: Path) -> Path:
-    return fujinet_msdos / "sys" / "fujinet.sys"
+def default_driver(driver_repo: Path) -> Path:
+    return driver_repo / "build" / "dos" / "fujinet.sys"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -38,10 +38,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Output qcow2 image (env: OUTPUT_IMAGE)",
     )
     parser.add_argument(
-        "-m",
-        "--msdos-dir",
-        default=os.environ.get("FUJINET_MSDOS", ""),
-        help="fujinet-msdos repository (env: FUJINET_MSDOS, required)",
+        "-r",
+        "--driver-repo",
+        default=os.environ.get("FUJINET_NIO_DRIVER", ""),
+        help="fujinet-nio-driver repository (env: FUJINET_NIO_DRIVER, required)",
     )
     parser.add_argument(
         "-d",
@@ -107,8 +107,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     args = parser.parse_args(argv)
     args.repo_root = Path(args.repo_root).resolve()
     args.base_image = resolve_path(args.base, args.repo_root)
-    args.fujinet_msdos = (
-        resolve_path(args.msdos_dir, args.repo_root) if args.msdos_dir else None
+    args.driver_repo = (
+        resolve_path(args.driver_repo, args.repo_root) if args.driver_repo else None
     )
 
     manifest = args.apps_manifest.strip()
@@ -118,8 +118,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     if args.driver.strip():
         args.driver_path = resolve_path(args.driver, args.repo_root)
-    elif args.fujinet_msdos is not None:
-        args.driver_path = default_driver(args.fujinet_msdos)
+    elif args.driver_repo is not None:
+        args.driver_path = default_driver(args.driver_repo)
     else:
         args.driver_path = None
 
@@ -142,24 +142,24 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
 
-    if args.fujinet_msdos is None:
+    if args.driver_repo is None:
         print(
-            "FUJINET_MSDOS is not defined.\n"
-            "Set FUJINET_MSDOS to the fujinet-msdos repository "
+            "FUJINET_NIO_DRIVER is not defined.\n"
+            "Set FUJINET_NIO_DRIVER to the fujinet-nio-driver repository "
             "(relative or absolute path).",
             file=sys.stderr,
         )
         return 1
 
-    if not args.fujinet_msdos.is_dir():
+    if not args.driver_repo.is_dir():
         print(
-            f"FUJINET_MSDOS does not exist: {args.fujinet_msdos}",
+            f"FUJINET_NIO_DRIVER does not exist: {args.driver_repo}",
             file=sys.stderr,
         )
         return 1
 
     if args.driver_path is None:
-        print("DRIVER is not defined and FUJINET_MSDOS was not provided.", file=sys.stderr)
+        print("DRIVER is not defined and FUJINET_NIO_DRIVER was not provided.", file=sys.stderr)
         return 1
 
     try:

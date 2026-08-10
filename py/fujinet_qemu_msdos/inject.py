@@ -154,7 +154,7 @@ def mdir(raw_image: Path, offset: int, names: list[str]) -> None:
 
 def read_dos_file(raw_image: Path, offset: int, name: str) -> str:
     image_spec = f"{raw_image}@@{offset}"
-    with tempfile.TemporaryDirectory(prefix="fujinet-msdos-read.") as tmpdir:
+    with tempfile.TemporaryDirectory(prefix="fujinet-nio-msdos-read.") as tmpdir:
         dest = Path(tmpdir) / name
         result = subprocess.run(
             ["mcopy", "-i", image_spec, f"::{name}", str(dest)],
@@ -172,7 +172,7 @@ def write_dos_file(raw_image: Path, offset: int, name: str, contents: str) -> No
         encoding="ascii",
         newline="",
         suffix=".dos",
-        prefix="fujinet-msdos-write.",
+        prefix="fujinet-nio-msdos-write.",
         delete=False,
     ) as handle:
         path = Path(handle.name)
@@ -391,7 +391,7 @@ def build_qcow2(
     if not driver.is_file():
         raise FileNotFoundError(
             f"Driver not found: {driver}\n"
-            "Build fujinet-msdos first, or pass --driver /path/to/fujinet.sys"
+            "Build fujinet-nio-driver first, or pass --driver /path/to/fujinet.sys"
         )
 
     apps: list[AppEntry] = []
@@ -408,7 +408,7 @@ def build_qcow2(
 
     with tempfile.NamedTemporaryFile(
         suffix=".raw",
-        prefix="fujinet-msdos-nio.",
+        prefix="fujinet-nio-msdos-image.",
         delete=False,
     ) as handle:
         raw_image = Path(handle.name)

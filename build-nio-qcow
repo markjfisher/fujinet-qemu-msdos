@@ -15,7 +15,7 @@ When --apps-manifest is used, output defaults to build/msdos-nio-apps.qcow2.
 Options:
   -b, --base <image>           Base MS-DOS qcow/qcow2 image (env: BASE_IMAGE)
   -o, --output <image>         Output qcow2 image (env: OUTPUT_IMAGE)
-  -m, --msdos-dir <path>       fujinet-msdos repository (env: FUJINET_MSDOS)
+  -r, --driver-repo <path>     fujinet-nio-driver repository (env: FUJINET_NIO_DRIVER)
   -d, --driver <path>          FUJINET.SYS to inject (env: DRIVER)
       --apps-manifest <file>   YAML app manifest (env: APPS_MANIFEST)
       --apps-dir <dir>         DOS directory for apps (env: APPS_DIR, default: FNAPPS)
@@ -26,16 +26,16 @@ Options:
   -h, --help                   Show this help message
 
 Repository paths (relative to this repo unless absolute):
-  FUJINET_MSDOS (required)
+  FUJINET_NIO_DRIVER (required)
 
 App paths are listed in manifests/apps.example.yaml. Copy it to
 manifests/apps.yaml and set environment variables such as NIO_APPS_MSDOS and
 BOUNCE_WORLD before building with --apps-manifest.
 
 Examples:
-  FUJINET_MSDOS=/path/to/fujinet-msdos $(basename "$0")
-  FUJI_BPS=9600 FUJINET_MSDOS=/path/to/fujinet-msdos $(basename "$0")
-  FUJINET_MSDOS=/path/to/fujinet-msdos \\
+  FUJINET_NIO_DRIVER=/path/to/fujinet-nio-driver $(basename "$0")
+  FUJI_BPS=9600 FUJINET_NIO_DRIVER=/path/to/fujinet-nio-driver $(basename "$0")
+  FUJINET_NIO_DRIVER=/path/to/fujinet-nio-driver \\
     NIO_APPS_MSDOS=/path/to/nio-apps/msdos \\
     BOUNCE_WORLD=/path/to/bounce-world-client-nio \\
     $(basename "$0") --apps-manifest manifests/apps.yaml

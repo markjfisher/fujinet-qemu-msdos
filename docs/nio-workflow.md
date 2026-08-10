@@ -15,7 +15,7 @@ The scripts expect these sibling repositories in your workspace, or equivalent
 paths supplied with environment variables:
 
 - `fujinet-nio`
-- `fujinet-msdos`
+- `fujinet-nio-driver`
 - `nio-apps` if you want to build the sample MS-DOS command applications
 
 You will need Open Watcom in your shell
@@ -32,8 +32,8 @@ cd /path/to/fujinet-nio
 Build the MS-DOS NIO driver:
 
 ```sh
-cd /path/to/fujinet-msdos
-make -C sys FUJINET_TRANSPORT=NIO
+cd /path/to/fujinet-nio-driver
+make
 ```
 
 Build the MS-DOS NIO applications:
@@ -75,7 +75,7 @@ Fields:
 Typical environment:
 
 ```sh
-export FUJINET_MSDOS=/path/to/fujinet-msdos
+export FUJINET_NIO_DRIVER=/path/to/fujinet-nio-driver
 export NIO_APPS_MSDOS_BIN=/path/to/nio-apps/build/msdos/bin
 export FUJINET_NIO_LIB=/path/to/fujinet-nio-lib
 ```

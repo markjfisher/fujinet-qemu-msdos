@@ -122,7 +122,7 @@ def build_apps_image(args: argparse.Namespace) -> None:
     if not args.manifest_path.is_file():
         raise FileNotFoundError(f"Apps manifest not found: {args.manifest_path}")
 
-    with tempfile.TemporaryDirectory(prefix="fujinet-msdos-apps.") as tmpdir:
+    with tempfile.TemporaryDirectory(prefix="fujinet-nio-msdos-apps.") as tmpdir:
         stage = Path(tmpdir)
         copied = stage_manifest(args.manifest_path, args.repo_root, stage)
         print(f"Staged {copied} app(s) from {args.manifest_path}")
